@@ -35,10 +35,7 @@ def delete(key):
 
     r = requests.post(url, data)
 
-    if(r.status_code == 200):
-        click.echo(f'The key was succesfully deleted')
-    else:
-        click.echo(f'Something went wrong.')
+    click.echo(r.text)
 
 @toychord.command()
 @click.option('--key', required=True, type=str)
