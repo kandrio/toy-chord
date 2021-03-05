@@ -1,6 +1,6 @@
-import click, requests
+import click, requests, sys
 
-base_url = 'http://localhost:8080'
+base_url = 'http://localhost:5000'
 
 @click.group()
 def toychord():
@@ -48,7 +48,7 @@ def query(key):
     r = requests.get(url)
 
     if(r.status_code == 200):
-        click.echo(f{r.content})
+        click.echo(f'{r.content}')
     else:
         click.echo(f'Something went wrong.')
 
@@ -75,9 +75,10 @@ def overlay():
     r = requests.get(url, data=data)
 
     if(r.status_code == 200):
-        click.echo(f{r.content})
+        click.echo(f'{r.content}')
     else:
         click.echo(f'Something went wrong.')
 
 if __name__ == '__main__':
+
     toychord()
