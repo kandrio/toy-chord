@@ -7,7 +7,7 @@ def insert_node_to_ring(node_ip, node_port):
     to the bootstrap node.
     """
 
-    bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node"
+    bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/insert"
     data = {'ip': node_ip, 'port': node_port}
     r = requests.post(bootstrap_url, data)
 
