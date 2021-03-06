@@ -1,6 +1,8 @@
 import click, requests, sys
 
-base_url = 'http://localhost:5000'
+bootstrap_ip = '127.0.0.1'
+bootstrap_port = '8000'
+base_url = 'http://' + bootstrap_ip + ':' + bootstrap_port
 
 @click.group()
 def toychord():

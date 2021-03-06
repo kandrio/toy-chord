@@ -1,5 +1,9 @@
 from flask import Flask, request
+import requests
 import argparse
+
+bootstrap_ip = '127.0.0.1'
+bootstrap_port = 8000
 
 app = Flask(__name__)
 
@@ -53,10 +57,41 @@ def query(key):
     
     return response, status
 
+@app.route('/node', methods=['POST'])
+def insert_node():
+
+    ip = request.form['ip']
+    port = request.form['port']
+
+    response = "The node was successfully inserted"
+    status = 200
+
+    print(ip, port, "wants to be inserted.")
+
+    return response, status
+
+
 if __name__ == '__main__':
+    
+    # This parser object will be used for reading the command line arguments 
+    # when running the server. 
     parser = argparse.ArgumentParser()
     parser.add_argument('--host', type = str, default="127.0.0.1")
     parser.add_argument('--port', type = int, default=5000)
     parser.add_argument('--is_bootstrap', type = bool, default=False)
     args = parser.parse_args()
-    app.run(host = args.host, port = args.port)
+
+    is_bootstrap = args.is_bootstrap
+
+    if (is_bootstrap):
+        host = bootstrap_ip
+        port = bootstrap_port
+    else:
+        host = args.host
+        port = args.port
+        bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node"
+        data = {'ip': host, 'port': port}
+        r = requests.post(bootstrap_url, data)
+        print(r.text)
+
+    app.run(host=host, port=port)
