@@ -1,4 +1,5 @@
 from flask import Flask, request
+import argparse
 
 app = Flask(__name__)
 
@@ -51,4 +52,11 @@ def query(key):
             status = 200
     
     return response, status
-    
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--host', type = str, default="127.0.0.1")
+    parser.add_argument('--port', type = int, default=5000)
+    parser.add_argument('--is_bootstrap', type = bool, default=False)
+    args = parser.parse_args()
+    app.run(host = args.host, port = args.port)
