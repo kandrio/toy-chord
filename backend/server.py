@@ -1,20 +1,12 @@
 from flask import Flask, request
 from node import Node
+from ring import Ring
+from config import bootstrap_ip, bootstrap_port
+from utils import insert_node_to_ring
 import requests
 import argparse
 
-bootstrap_ip = '127.0.0.1'
-bootstrap_port = 8000
-
 app = Flask(__name__)
-
-class Ring():
-    def __init__(self, bootstrap_ip, bootstrap_port):
-        self.ring = [(bootstrap_ip, bootstrap_port)]
-    def insert(self, ip, port):
-        prev = self.ring[-1]
-        self.ring.append((ip, port))
-        return prev
 
 database = {}
 
@@ -98,6 +90,8 @@ if __name__ == '__main__':
     parser.add_argument('--is_bootstrap', type = bool, default=False)
     args = parser.parse_args()
 
+    # This is set by the user with: "--bootstrap True" when running the "server.py". 
+    # Otherwise, it defaults to False.
     is_bootstrap = args.is_bootstrap
 
     if (is_bootstrap):
@@ -106,9 +100,8 @@ if __name__ == '__main__':
     else:
         host = args.host
         port = args.port
-        bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node"
-        data = {'ip': host, 'port': port}
-        r = requests.post(bootstrap_url, data)
-        print(r.json())
+
+        resp = insert_node_to_ring(node_ip=host, node_port=port)
+        print(resp)
 
     app.run(host=host, port=port)
