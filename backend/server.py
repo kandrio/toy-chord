@@ -1,4 +1,5 @@
 from flask import Flask, request
+from node import Node
 import requests
 import argparse
 
@@ -6,13 +7,6 @@ bootstrap_ip = '127.0.0.1'
 bootstrap_port = 8000
 
 app = Flask(__name__)
-
-class Node():
-    def __init__(self, prev_ip=None, prev_port=None, next_ip=None, next_port=None):
-        self.prev_ip = prev_ip
-        self.prev_port = prev_port
-        self.next_ip = next_ip
-        self.next_port = next_port
 
 class Ring():
     def __init__(self, bootstrap_ip, bootstrap_port):
