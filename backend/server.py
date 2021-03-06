@@ -7,7 +7,25 @@ bootstrap_port = 8000
 
 app = Flask(__name__)
 
+class Node():
+    def __init__(self, prev_ip=None, prev_port=None, next_ip=None, next_port=None):
+        self.prev_ip = prev_ip
+        self.prev_port = prev_port
+        self.next_ip = next_ip
+        self.next_port = next_port
+
+class Ring():
+    def __init__(self, bootstrap_ip, bootstrap_port):
+        self.ring = [(bootstrap_ip, bootstrap_port)]
+    def insert(self, ip, port):
+        prev = self.ring[-1]
+        self.ring.append((ip, port))
+        return prev
+
 database = {}
+
+ring = Ring(bootstrap_ip, bootstrap_port)
+node = Node()
 
 @app.route('/insert', methods=['POST'])
 def insert():
@@ -62,8 +80,13 @@ def insert_node():
 
     ip = request.form['ip']
     port = request.form['port']
+    prev_ip, prev_port = ring.insert(ip, port)
 
-    response = "The node was successfully inserted"
+    response = {'prev_ip': prev_ip, 
+                'prev_port': prev_port,
+                'next_ip': bootstrap_ip,
+                'next_port': bootstrap_port}
+
     status = 200
 
     print(ip, port, "wants to be inserted.")
@@ -92,6 +115,6 @@ if __name__ == '__main__':
         bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node"
         data = {'ip': host, 'port': port}
         r = requests.post(bootstrap_url, data)
-        print(r.text)
+        print(r.json())
 
     app.run(host=host, port=port)
