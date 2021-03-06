@@ -36,3 +36,19 @@ def delete():
 
     return response, status
 
+@app.route('/query/<key>', methods=['GET'])
+def query(key):
+
+    if key == "*":
+        response = database
+        status = 200
+    else:
+        if key not in database:
+            response = "Sorry, we don't have that song."
+            status = 404
+        else:
+            response = database[key]
+            status = 200
+    
+    return response, status
+    

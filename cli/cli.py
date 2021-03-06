@@ -40,14 +40,15 @@ def delete(key):
 @toychord.command()
 @click.option('--key', required=True, type=str)
 def query(key):
-    url = base_url + '/query'
+    
+    url = base_url + '/query/' + key 
 
     r = requests.get(url)
 
     if(r.status_code == 200):
-        click.echo(f'{r.content}')
+        click.echo(r.text)
     else:
-        click.echo(f'Something went wrong.')
+        click.echo("Something went wrong with your query.")
 
 @toychord.command()
 @click.option('--nodekey', required=True, type=str)
