@@ -25,10 +25,10 @@ def hashing (value):
     return sha1(value.encode('utf-8')).hexdigest()
 
 
-def between(ID, curID, successorID):
-    if (curID < successorID):
-        return (ID > curID and ID <= successorID)  
-    elif ( curID > successorID):
-        return ( ID > curID or ID <= successorID )
+def between(ID, curID, prevID):
+    if (curID > prevID):
+        return (ID <= curID and ID > prevID)  
+    elif ( curID < prevID):
+        return ( ID <= curID or ID > prevID )
     else:
         return True
