@@ -50,7 +50,6 @@ def delete():
     
     # if you are the responsible node for this id
     if (between(hashKey,node.my_id,node.next_id)):
-        print("before", node.my_port, node.storage)
         if ( key in node.storage):
             # delete item
             del node.storage[key]
@@ -72,12 +71,10 @@ def delete():
 def query(key):
 
     hashKey = hashing(key)
-    """
-    if key == "*":
-        response = database
-        status = 200
-        return response, status
-    """
+    if (key=='*'):
+        url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/sendall"
+        r = requests.get(url_next)
+        return r.text
     # if you are the responsible node for this id
     if (between(hashKey,node.my_id,node.next_id)):
         # item not found
@@ -99,6 +96,41 @@ def query(key):
             return response, status
         return r.text
     
+@app.route('/sendall', methods=['GET'])
+def sendall():
+    ans=""
+    cnt=0
+    for cnt_node in ring.ring:
+        ip=cnt_node[ 'ip']
+        port=cnt_node['port']
+        url_next = "http://" + ip + ":" + str(port) + "/senddata"
+        r = requests.get(url_next)
+        ans+= r.text 
+        """
+        if (cnt==0):
+            cnt=1
+            continue
+        """
+        #ans+= "\n"
+    if r.status_code != 200:
+            response="A problem occurred. "
+            status= 404
+            return response, status
+    return ans
+
+@app.route('/senddata', methods=['GET'])
+def senddata():
+    data=""
+    cnt=0
+    for dat in node.storage:
+        data+=node.storage[dat]
+        """
+        if (cnt==0):
+            cnt=1
+            continue
+        """
+        data+= "\n"
+    return data
 
 @app.route('/node/join', methods=['POST'])
 def join_node():
