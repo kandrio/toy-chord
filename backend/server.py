@@ -53,7 +53,6 @@ def delete():
         if ( key in node.storage):
             # delete item
             del node.storage[key]
-            print("after: ", node.storage)
             return(" The key-value pair was successfully deleted.")
         else:
             # item doesn't exist
@@ -99,19 +98,13 @@ def query(key):
 @app.route('/sendall', methods=['GET'])
 def sendall():
     ans=""
-    cnt=0
     for cnt_node in ring.ring:
         ip=cnt_node[ 'ip']
         port=cnt_node['port']
         url_next = "http://" + ip + ":" + str(port) + "/senddata"
         r = requests.get(url_next)
         ans+= r.text 
-        """
-        if (cnt==0):
-            cnt=1
-            continue
-        """
-        #ans+= "\n"
+
     if r.status_code != 200:
             response="A problem occurred. "
             status= 404
@@ -121,14 +114,8 @@ def sendall():
 @app.route('/senddata', methods=['GET'])
 def senddata():
     data=""
-    cnt=0
     for dat in node.storage:
         data+=node.storage[dat]
-        """
-        if (cnt==0):
-            cnt=1
-            continue
-        """
         data+= "\n"
     return data
 
@@ -191,6 +178,7 @@ def join_node():
 
     return response, status
 
+
 @app.route('/node/update', methods=['POST'])
 def update_node():
     """
@@ -217,7 +205,143 @@ def update_node():
     print("The next node now has IP:", node.next_ip, ", port:", node.next_port, "and hash ID:", node.next_id)
 
     return "Link update OK", 200
-  
+
+
+
+
+@app.route('/node/depart', methods=['POST'])
+def depart_node():
+    """
+    This is a route for the BOOTSTRAP NODE only. New nodes will
+    make POST requests to this route of the BOOTSTRAP NODE server
+    so that they can be inserted in the RING network.
+    """
+    ip = request.form['ip']
+    port = request.form['port']
+
+    print("Node:", ip + ":" + str(port), "wants to depart from the RING network.")
+    url_prev = "http://" + ip + ":" + str(port) + "/node/depart/update"
+    # These will be the links to the PREVIOUS and the NEXT node.
+    print("The node has to inform it's neighbors.")
+    # !!!               
+    r = requests.get(url_next)
+    if r.status_code != 200:
+        print("Something went wrong with updating the next node.")
+        return "Error!"
+
+    return r.text
+    
+
+
+
+@app.route('/node/depart/update', methods=['GET'])
+def update_node_after_depart():
+    # These data will be sent to the PREVIOUS node, so that it can update
+    # its link to the NEXT node now that a new node is inserted.
+    data_to_prev = {
+        'prev_or_next': 'prev',
+        'ip': node.next_ip,
+        'port': node.next_port,
+        'id': node.next_id,
+        'data': node.storage
+    }
+
+    # This data will be sent to the NEXT node, so that it can update 
+    # its link to its PREVIOUS node now that a new node is inserted.
+    data_to_next = {
+        'prev_or_next': 'next',
+        'ip': node.prev_ip,
+        'port': node.prev_port,
+        'id' : node.prev_id, 
+        'data': node.storage
+    }
+
+    url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/update/neighbor"
+    print("About to send an update to the previous neighbor of the departed node.")
+    r = requests.post(url_prev, data_to_prev)
+    if r.status_code != 200:
+        print("Something went wrong with updating the previous node.")
+    
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/neighbor"
+    print("About to send an update to the next neighbor of the departed node.")
+    r = requests.post(url_next, data_to_next)
+    if r.status_code != 200:
+        print("Something went wrong with updating the next node.")
+    
+    data= {
+        'ip': node.my_ip,
+        'port': node.my_port
+    }
+    url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/depart/final"
+    r = requests.post(url_next,data)
+    if r.status_code != 200:
+        print("Something went wrong while asking bootstrap to delete you.")
+        return ("Error!")
+    return r.text    
+
+
+
+
+@app.route('/node/update/neighbor', methods=['POST'])
+def update_neighbor():
+    """
+    This is a route for ALL NODES. When a new node is inserted in
+    the RING (via the '/node/join' route), then the neighbors of that
+    node must update their links, so that they point at that new node.
+    """
+    print("About to update neighbor's links and storage.")
+    
+    data_to_next = {
+        'prev_or_next': 'next',
+        'ip': node.prev_ip,
+        'port': node.prev_port,
+        'id' : node.prev_id, 
+        'data': node.storage
+    }
+
+
+    prev_or_next = request.form['prev_or_next']
+    if prev_or_next == 'prev':
+        node.next_ip = request.form['ip']
+        node.next_port = request.form['port']
+        node.next_id = get_node_hash_id(node.next_ip, node.next_port)
+    elif prev_or_next == 'next':
+        node.prev_ip = request.form['ip']
+        node.prev_port = request.form['port']
+        node.prev_id = get_node_hash_id(node.prev_ip, node.prev_port)
+    else:
+        print("Something's wrong with prev_or_next")
+        return "Error", 500
+    
+    data = request.form['data']
+    for dat in data:
+        node.storage[dat]=data[dat]
+    
+    return "Neighbor is updated", 200
+
+
+@app.route('/node/depart/final', methods=['POST'])
+def finally_depart_node():
+    """
+    This is a route for ALL NODES. When a new node is inserted in
+    the RING (via the '/node/join' route), then the neighbors of that
+    node must update their links, so that they point at that new node.
+    """
+    print("About to depart the node.")
+    ip = request.form['ip']
+    port = request.form['port']
+    id=get_node_hash_id(ip, port)
+    # to be written search based on id and delete
+    
+    
+    return "Node has departed successfully", 200
+
+
+
+
+
+
+
 
 if __name__ == '__main__':
     
