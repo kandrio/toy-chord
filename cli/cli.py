@@ -43,17 +43,15 @@ def delete(key):
 @click.option('--key', required=True, type=str)
 def query(key):
     
-    url = base_url + '/query'  
-    
-    data= {
-        'key': key
-    }
-    r = requests.post(url,data)
+    url = base_url + '/query/' + key 
+
+    r = requests.get(url)
 
     if(r.status_code == 200):
         click.echo(r.text)
     else:
-        click.echo("Something went wrong with your query.")
+        click.echo("That song doesn't exist.")
+
 
 @toychord.command()
 @click.option('--nodekey', required=True, type=str)

@@ -68,21 +68,16 @@ def delete():
             return "Error, 404"
         return r.text
 
-@app.route('/query', methods=['POST'])
-def query():
+@app.route('/query/<key>', methods=['GET'])
+def query(key):
 
-
-    key = request.form['key']
     hashKey = hashing(key)
-    data= {
-        'key': key,
-    }
-
+    """
     if key == "*":
         response = database
         status = 200
         return response, status
-
+    """
     # if you are the responsible node for this id
     if (between(hashKey,node.my_id,node.next_id)):
         # item not found
@@ -96,14 +91,13 @@ def query():
         return response, status
     else:
         # otherwise, inform your successor for querying item
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
-        r = requests.post(url_next, data)
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
+        r = requests.get(url_next)
         if r.status_code != 200:
-            print("Something went wrong.")
             response="A problem occurred. "
-            status= "404"
-            return response + status
-        return ""
+            status= 404
+            return response, status
+        return r.text
     
 
 @app.route('/node/join', methods=['POST'])
