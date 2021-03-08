@@ -27,3 +27,5 @@ class Node():
         self.next_id = None
         self.next_ip = next_ip
         self.next_port = next_port
+        # added
+        self.storage={}

@@ -43,9 +43,12 @@ def delete(key):
 @click.option('--key', required=True, type=str)
 def query(key):
     
-    url = base_url + '/query/' + key 
-
-    r = requests.get(url)
+    url = base_url + '/query'  
+    
+    data= {
+        'key': key
+    }
+    r = requests.post(url,data)
 
     if(r.status_code == 200):
         click.echo(r.text)

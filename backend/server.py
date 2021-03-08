@@ -2,13 +2,12 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_node_hash_id
+from utils import insert_node_to_ring, get_node_hash_id, between, hashing
 import requests
 import argparse
 
 app = Flask(__name__)
 
-database = {}
 
 ring = Ring(bootstrap_ip, bootstrap_port)
 node = Node()
@@ -19,47 +18,93 @@ def insert():
     key = request.form['key']
     value = request.form['value']
 
-    # Insert it in the "database".
-    database[key] = value
+    # hashing the key in order to find it's position into the ring
+    hashKey = hashing(key)
+    data= {
+        'key': key,
+        'value': value,
+    }
+    # if you are the responsible node for this id, insert it in your "database"
+    if (between(hashKey,node.my_id,node.next_id)):
+        node.storage[key]=value
+        return 'The key-value pair was successfully inserted.'
+    else:
+        # otherwise send the data to your successor
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert"
+        r = requests.post(url_next, data)
+        if r.status_code != 200:
+            print("Something went wrong.")
+            return "Error, 404"
+        return r.text
     
-    # Confirm that the database is indeed updated.
-    print(database)
-    
-    return 'The key-value pair was successfully inserted.'
 
 @app.route('/delete', methods=['POST'])
 def delete():
 
     # Extract the key of the 'delete' request.
     key = request.form['key']
-
-    if (key in database):
-        del database[key]
-        response = "The key : '" + key + "' was successfully deleted." 
-        status = 200
+    hashKey = hashing(key)
+    data= {
+        'key': key,
+    }
+    
+    # if you are the responsible node for this id
+    if (between(hashKey,node.my_id,node.next_id)):
+        print("before", node.my_port, node.storage)
+        if ( key in node.storage):
+            # delete item
+            del node.storage[key]
+            print("after: ", node.storage)
+            return(" The key-value pair was successfully deleted.")
+        else:
+            # item doesn't exist
+            return ("There isn't value with such a key.")
     else:
-        response = "The key: '" + key + "' doesn't exist." 
-        status = 404
+        # otherwise, inform your successor for deleting item    
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete"
+        r = requests.post(url_next, data)
+        if r.status_code != 200:
+            print("Something went wrong.")
+            return "Error, 404"
+        return r.text
 
-    print(database)
+@app.route('/query', methods=['POST'])
+def query():
 
-    return response, status
 
-@app.route('/query/<key>', methods=['GET'])
-def query(key):
+    key = request.form['key']
+    hashKey = hashing(key)
+    data= {
+        'key': key,
+    }
 
     if key == "*":
         response = database
         status = 200
-    else:
-        if key not in database:
+        return response, status
+
+    # if you are the responsible node for this id
+    if (between(hashKey,node.my_id,node.next_id)):
+        # item not found
+        if key not in node.storage:
             response = "Sorry, we don't have that song."
             status = 404
+        # here is your item
         else:
-            response = database[key]
+            response=node.storage[key]
             status = 200
+        return response, status
+    else:
+        # otherwise, inform your successor for querying item
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
+        r = requests.post(url_next, data)
+        if r.status_code != 200:
+            print("Something went wrong.")
+            response="A problem occurred. "
+            status= "404"
+            return response + status
+        return ""
     
-    return response, status
 
 @app.route('/node/join', methods=['POST'])
 def join_node():
@@ -146,6 +191,7 @@ def update_node():
     print("The next node now has IP:", node.next_ip, ", port:", node.next_port, "and hash ID:", node.next_id)
 
     return "Link update OK", 200
+  
 
 if __name__ == '__main__':
     
