@@ -332,8 +332,11 @@ def finally_depart_node():
     port = request.form['port']
     id=get_node_hash_id(ip, port)
     # to be written search based on id and delete
-    
-    
+    dict_to_insert = {'hash_id': hash_id, 'ip': ip, 'port':port}
+    for dic in ring.ring:
+        if (dic['hash_id']==id and dic['ip']==ip and dic['port']==port):
+            ring.ring.remove(dic)
+
     return "Node has departed successfully", 200
 
 
