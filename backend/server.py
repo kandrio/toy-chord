@@ -2,9 +2,11 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_node_hash_id, between, hashing
+from utils import insert_node_to_ring, get_node_hash_id, between, hashing, hexToInt
 import requests
 import argparse
+import json
+
 
 app = Flask(__name__)
 
@@ -143,9 +145,10 @@ def join_node():
         'ip': ip,
         'port': port
     }
-
+    
     # This data will be sent to the NEXT node, so that it can update 
     # its link to its PREVIOUS node now that a new node is inserted.
+    
     data_next = {
         'prev_or_next': 'next',
         'ip': ip,
@@ -165,11 +168,14 @@ def join_node():
     r = requests.post(url_next, data_next)
     if r.status_code != 200:
         print("Something went wrong with updating the next node.")
-
+    
+    
+    
     print("Node:", ip + ":" + str(port), "was inserted in the RING network.")
-
+    
     print("The RING looks like this:")
     print(ring.ring)
+    
 
     response = {'prev_ip': prev_ip, 
                 'prev_port': prev_port,
@@ -196,7 +202,9 @@ def update_node():
     elif prev_or_next == 'next':
         node.prev_ip = request.form['ip']
         node.prev_port = request.form['port']
-        node.prev_id = get_node_hash_id(node.prev_ip, node.prev_port)
+        id=get_node_hash_id(node.prev_ip, node.prev_port)
+        node.prev_id = id
+
     else:
         print("Something's wrong with prev_or_next")
         return "Error", 500
@@ -206,8 +214,35 @@ def update_node():
 
     return "Link update OK", 200
 
+@app.route('/node/sendyourdata', methods=['GET'])
+def sendyourdata():
+    data={}
+    delete=[]
+    for dat in node.storage:
+        hashKey = hashing(dat)
+        if(hexToInt(hashKey) <= hexToInt(node.prev_id) ):
+            data[dat]=node.storage[dat]
+            delete.append(dat)
+    for dat in delete:
+        del node.storage[dat]
+    print("About to send the data that newly inserted node owns.")
+    return data
 
+"""
+@app.route('/node/data', methods=['POST'])
+def updatedata():
+    print("hello")
+    data=request.form['data']
+    print("oopsie")
+    for dat in data:
+        node.storage[dat]=data[dat]
+    print("hello2")
+    print(node.storage)
+    print("junk")
+    return "Newly inserted node has just succeeded it's update!"
+"""
 
+"""
 @app.route('/node/depart', methods=['POST'])
 def depart_node():
     
@@ -315,7 +350,7 @@ def finally_depart_node():
             ring.ring.remove(dic)
 
     return "Node has departed successfully", 200
-
+"""
 
 
 
@@ -399,5 +434,13 @@ if __name__ == '__main__':
         print("The node was successfully inserted to the ring network.")
         print("The previous node has IP:", node.prev_ip, ", port:", node.prev_port, "and hash:", node.prev_id)
         print("The next node has IP:", node.next_ip, ", port:", node.next_port, "and hash:", node.next_id)
+
+        url = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/sendyourdata"
+        print("About to send an update to the next neighbor of the newly inserted node.")
+        r2 = requests.get(url)
+        dictionary=r2.json()
+        for dat in dictionary:
+            node.storage[dat]=dictionary[dat]
+        print(node.storage)
 
     app.run(host=host, port=port)

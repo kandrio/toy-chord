@@ -1,6 +1,7 @@
 import requests
 from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
+import json
 
 def insert_node_to_ring(hash_id: str, node_ip:str , node_port:int):
     """ 
@@ -11,8 +12,8 @@ def insert_node_to_ring(hash_id: str, node_ip:str , node_port:int):
 
     bootstrap_url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/join"
     data = {'hash_id': hash_id, 'ip': node_ip, 'port': node_port}
-    r = requests.post(bootstrap_url, data)
-
+    r  = requests.post(bootstrap_url, data)
+    
     return r.json()
 
 
@@ -24,7 +25,9 @@ def get_node_hash_id(node_ip: str, node_port: int):
 def hashing (value):
     return sha1(value.encode('utf-8')).hexdigest()
 
-
+def hexToInt (hexVal):
+    return int(hexVal,16)
+    
 def between(ID, curID, prevID):
     if (curID > prevID):
         return (ID <= curID and ID > prevID)  
