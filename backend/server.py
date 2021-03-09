@@ -338,6 +338,13 @@ def finally_depart_node():
 
     return "Node has departed successfully", 200
 
+@app.route('/overlay', methods=['GET'])
+def overlay():
+    ans=""
+    for dic in ring.ring:
+        ans+="Node with ip: " + dic['ip'] + ", port: " + str(dic['port']) + " and id: " +  str(hexToInt(dic['hash_id'])) + '\n'
+    return ans
+
 
 
 
