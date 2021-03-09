@@ -228,21 +228,9 @@ def sendyourdata():
     print("About to send the data that newly inserted node owns.")
     return data
 
-"""
-@app.route('/node/data', methods=['POST'])
-def updatedata():
-    print("hello")
-    data=request.form['data']
-    print("oopsie")
-    for dat in data:
-        node.storage[dat]=data[dat]
-    print("hello2")
-    print(node.storage)
-    print("junk")
-    return "Newly inserted node has just succeeded it's update!"
-"""
 
-"""
+
+
 @app.route('/node/depart', methods=['POST'])
 def depart_node():
     
@@ -250,10 +238,10 @@ def depart_node():
     port = request.form['port']
 
     print("Node:", ip + ":" + str(port), "wants to depart from the RING network.")
-    url_prev = "http://" + ip + ":" + str(port) + "/node/depart/update"
+    url = "http://" + ip + ":" + str(port) + "/node/depart/update"
     print("The node has to inform it's neighbors.")
    
-    r = requests.get(url_next)
+    r = requests.get(url)
     if r.status_code != 200:
         print("Something went wrong with updating the next node.")
         return "Error!"
@@ -271,7 +259,7 @@ def update_node_after_depart():
         'prev_or_next': 'prev',
         'ip': node.next_ip,
         'port': node.next_port,
-        'id': node.next_id,
+        'id': node.next_id
     }
 
     # This data will be sent to the NEXT node, so that it can update 
@@ -300,8 +288,8 @@ def update_node_after_depart():
         'ip': node.my_ip,
         'port': node.my_port
     }
-    url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/depart/final"
-    r = requests.post(url_next,data)
+    url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/depart/final"
+    r = requests.post(url,data)
     if r.status_code != 200:
         print("Something went wrong while asking bootstrap to delete you.")
         return ("Error!")
@@ -344,13 +332,11 @@ def finally_depart_node():
     ip = request.form['ip']
     port = request.form['port']
     id=get_node_hash_id(ip, port)
-    dict_to_insert = {'hash_id': hash_id, 'ip': ip, 'port':port}
     for dic in ring.ring:
         if (dic['hash_id']==id and dic['ip']==ip and dic['port']==port):
             ring.ring.remove(dic)
 
     return "Node has departed successfully", 200
-"""
 
 
 
