@@ -2,141 +2,193 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_node_hash_id, between, hashing, hexToInt
+from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt
 import requests
 import argparse
 import json
 
-
 app = Flask(__name__)
-
 
 ring = Ring(bootstrap_ip, bootstrap_port)
 node = Node()
 
+
 @app.route('/insert', methods=['POST'])
 def insert():
+    """ 
+    This is a route for ALL NODES. 
+    The client sends post requests to this route so that new key-value pairs
+    are inserted.
+    """
+
     # Extract the key and value from the data of the 'insert' request.
     key = request.form['key']
     value = request.form['value']
 
-    # hashing the key in order to find it's position into the ring
-    hashKey = hashing(key)
-    data= {
-        'key': key,
-        'value': value,
-    }
-    # if you are the responsible node for this id, insert it in your "database"
-    if (between(hashKey,node.my_id,node.prev_id)):
+    # Hash the key of the inserted key-value pair in order to find the node 
+    # that it's owned by.
+    hash_key = hashing(key)
+
+    if between(hash_key, node.my_id, node.prev_id):
+        # If you are the node that owns this hask key, insert the key-value pair in your database.
         node.storage[key]=value
-        return 'The key-value pair was successfully inserted.'
+        print("A key-value pair with key:", key + ", and hash key:", hash_key, "was inserted/updated.")
+        print("Our database now is:", node.storage)
+        return "The key-value pair was successfully inserted.", 200
     else:
-        # otherwise send the data to your successor
+        # Otherwise, retransmit the data to the NEXT node.
         url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert"
+        
+        data = {
+            'key': key,
+            'value': value,
+        }
+
         r = requests.post(url_next, data)
         if r.status_code != 200:
-            print("Something went wrong.")
-            return "Error, 404"
+            print("Something went wrong with retransmiting a key-value pair.")
+            return "Something went wrong with retransmiting the key-value pair.", 500
+
         return r.text
     
 
 @app.route('/delete', methods=['POST'])
 def delete():
+    """
+    This is a route for ALL NODES. The client sends sequests to this route
+    so that a key-value pair is deleted.
+    """
 
     # Extract the key of the 'delete' request.
     key = request.form['key']
-    hashKey = hashing(key)
-    data= {
-        'key': key,
-    }
+    hash_key = hashing(key)
     
-    # if you are the responsible node for this id
-    if (between(hashKey,node.my_id,node.prev_id)):
-        if ( key in node.storage):
-            # delete item
+    if between(hash_key, node.my_id, node.prev_id):
+        # We are the node that owns that hash key.
+        if (key in node.storage):
+            # Delete the key-value pair from our database.
             del node.storage[key]
-            return(" The key-value pair was successfully deleted.")
+            
+            print("The key:", key, "was deleted from our database.")
+            print("The database now looks like this:", node.storage)
+            
+            response = "The key-value pair was successfully deleted."
+            status = 200
         else:
-            # item doesn't exist
-            return ("There isn't value with such a key.")
+            response = "There isn't such a key-value pair."
+            status = 404
     else:
-        # otherwise, inform your successor for deleting item    
+        # Otherwise, we send a request to the next node.    
         url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete"
+        data = {
+            'key': key,
+        }
         r = requests.post(url_next, data)
         if r.status_code != 200:
-            print("Something went wrong.")
-            return "Error, 404"
-        return r.text
+            print("Something went wrong with the request to the next node.")
+        
+        response = r.text
+        status = r.status_code    
+
+    return response, status
+
 
 @app.route('/query/<key>', methods=['GET'])
 def query(key):
+    """
+    This is a route for ALL NODES. The client sends a get request to this route,
+    so that the value of a key-value pair is retrieved.
+    """
 
-    hashKey = hashing(key)
+    hash_key = hashing(key)
+    
     if (key=='*'):
-        url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/sendall"
+        # The user wants to GET all key-value pairs from the database, so we send a
+        # request to the BOOTSTRAP server. The BOOTSTRAP server "knows" each node in
+        # the ring network.
+        url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/bootstrap/queryall"
         r = requests.get(url_next)
-        return r.text
-    # if you are the responsible node for this id
-    if (between(hashKey,node.my_id,node.prev_id)):
-        # item not found
+        return r.text, 200
+    
+    if between(hash_key, node.my_id, node.prev_id):
+        # If we are the node that owns the hash key.
         if key not in node.storage:
+            # The key-value pair doesn't exist in the toy-chord database.
             response = "Sorry, we don't have that song."
             status = 404
-        # here is your item
         else:
-            response=node.storage[key]
+            # We found the key-value pair. Returning the value.
+            response = node.storage[key]
             status = 200
-        return response, status
     else:
-        # otherwise, inform your successor for querying item
+        # Otherwise, we "ask" the next node for the key-value pair.
         url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
         r = requests.get(url_next)
-        if r.status_code != 200:
-            response="A problem occurred. "
-            status= 404
-            return response, status
-        return r.text
+        response = r.text
+        status = r.status_code
     
-@app.route('/sendall', methods=['GET'])
-def sendall():
-    ans=""
-    for cnt_node in ring.ring:
-        ip=cnt_node[ 'ip']
-        port=cnt_node['port']
-        url_next = "http://" + ip + ":" + str(port) + "/senddata"
-        r = requests.get(url_next)
-        ans+= r.text 
+    return response, status
+    
 
-    if r.status_code != 200:
-            response="A problem occurred. "
-            status= 404
-            return response, status
-    return ans
+@app.route('/bootstrap/queryall', methods=['GET'])
+def query_all():
+    """
+    This is a route for the BOOTSTRAP NODE only. 
+    Whenever a client requests for ALL the key-value pairs in the database,
+    through the "/query/*" route, then the REGULAR node sends a request to this
+    route of the bootstrap server.
+    """
+    
+    response = ""
+    status = 200
 
-@app.route('/senddata', methods=['GET'])
-def senddata():
-    data=""
-    for dat in node.storage:
-        data+=node.storage[dat]
-        data+= "\n"
-    return data
+    # Gather all datasets of the nodes in the ring.
+    for node in ring.ring:
+        ip = node[ 'ip']
+        port = node['port']
+        url_node = "http://" + ip + ":" + str(port) + "/node/sendalldata"
+        r = requests.get(url_node)     
+        if r.status_code != 200:
+            response = "A problem occurred when trying to all fetch all data."
+            status = 404
+            break
+        response += r.text
 
-@app.route('/node/join', methods=['POST'])
+    return response, status
+
+
+@app.route('/node/sendalldata', methods=['GET'])
+def send_all_data():
+    """
+    This is a route for the ALL NODES. Whenever a client requests for ALL the key-value 
+    pairs in the database, through the "/query/*" route, then the BOOTSTRAP node sends 
+    a request to this route of of every REGULAR node, in order to collect their databases.
+    """
+    data = ""
+    for key in node.storage:
+        data += node.storage[key]
+        data += "\n"
+    
+    return data, 200
+
+
+@app.route('/bootstrap/node/join', methods=['POST'])
 def join_node():
     """
     This is a route for the BOOTSTRAP NODE only. New nodes will
     make POST requests to this route of the BOOTSTRAP NODE server
     so that they can be inserted in the RING network.
     """
+    response = {}
 
     hash_id = request.form['hash_id']
     ip = request.form['ip']
     port = request.form['port']
 
+    print("Node:", ip + ":" + str(port), "with ID:", hash_id, "wants to be inserted in the RING network.")
+
     # These will be the links to the PREVIOUS and the NEXT node.
     prev_ip, prev_port, next_ip, next_port = ring.insert(hash_id, ip, port)
-
-    status = 200
 
     # These data will be sent to the PREVIOUS node, so that it can update
     # its link to the NEXT node now that a new node is inserted.
@@ -145,198 +197,238 @@ def join_node():
         'ip': ip,
         'port': port
     }
+
+    url_prev = "http://" + prev_ip + ":" + str(prev_port) + "/node/update/link"
+
+    print("About to send an update to the PREVIOUS neighbor of node", hash_id)
     
+    r = requests.post(url_prev, data_prev)
+    if r.status_code != 200:
+        print("Something went wrong with updating the previous node.")
+        return response, r.status_code
+    else:
+        print("The update was successful.")
+    
+
     # This data will be sent to the NEXT node, so that it can update 
     # its link to its PREVIOUS node now that a new node is inserted.
-    
     data_next = {
         'prev_or_next': 'next',
         'ip': ip,
         'port': port
     }
+    
+    url_next = "http://" + next_ip + ":" + str(next_port) + "/node/update/link"
 
-    print("Node:", ip + ":" + str(port), "wants to be inserted in the RING network.")
-    
-    url_prev = "http://" + prev_ip + ":" + str(prev_port) + "/node/update"
-    print("About to send an update to the previous neighbor of the newly inserted node.")
-    r = requests.post(url_prev, data_prev)
-    if r.status_code != 200:
-        print("Something went wrong with updating the previous node.")
-    
-    url_next = "http://" + next_ip + ":" + str(next_port) + "/node/update"
-    print("About to send an update to the next neighbor of the newly inserted node.")
+    print("About to send an update to the NEXT neighbor of node", hash_id)
     r = requests.post(url_next, data_next)
     if r.status_code != 200:
         print("Something went wrong with updating the next node.")
-    
+        return response, r.status_code
+    else:
+        print("The update was successful.")
     
     
     print("Node:", ip + ":" + str(port), "was inserted in the RING network.")
-    
-    print("The RING looks like this:")
-    print(ring.ring)
-    
+    print("The RING now looks like this:")
+    print(ring.ring)    
 
     response = {'prev_ip': prev_ip, 
                 'prev_port': prev_port,
                 'next_ip': next_ip,
                 'next_port': next_port}
 
-    return response, status
+    return response, r.status_code
 
 
-@app.route('/node/update', methods=['POST'])
-def update_node():
+@app.route('/node/update/link', methods=['POST'])
+def update_link():
     """
     This is a route for ALL NODES. When a new node is inserted in
-    the RING (via the '/node/join' route), then the neighbors of that
+    the RING (via the '/bootstrap/node/join' route), then the neighbors of that
     node must update their links, so that they point at that new node.
     """
-    print("About to update the links to the neighbors.")
 
     prev_or_next = request.form['prev_or_next']
     if prev_or_next == 'prev':
+        print("About to update the link to the NEXT node.")
         node.next_ip = request.form['ip']
         node.next_port = request.form['port']
         node.next_id = get_node_hash_id(node.next_ip, node.next_port)
     elif prev_or_next == 'next':
+        print("About to update the link to the PREVIOUS node.")
         node.prev_ip = request.form['ip']
         node.prev_port = request.form['port']
-        id=get_node_hash_id(node.prev_ip, node.prev_port)
-        node.prev_id = id
-
+        node.prev_id = get_node_hash_id(node.prev_ip, node.prev_port)
     else:
-        print("Something's wrong with prev_or_next")
+        print("Something's wrong with prev_or_next value.")
         return "Error", 500
 
-    print("The previous node now has IP:", node.prev_ip, ", port:", node.prev_port, "and hash ID:", node.prev_id)
-    print("The next node now has IP:", node.next_ip, ", port:", node.next_port, "and hash ID:", node.next_id)
+    print("The link was updated.")
+    print("The previous node has IP:", node.prev_ip, ", port:", node.prev_port, "and hash ID:", node.prev_id)
+    print("The next node has IP:", node.next_ip, ", port:", node.next_port, "and hash ID:", node.next_id)
 
-    return "Link update OK", 200
+    return "The link was updated successfully", 200
+
 
 @app.route('/node/sendyourdata', methods=['GET'])
-def sendyourdata():
+def send_your_data():
+    """
+    This is a route for ALL NODES. When a new node is inserted in
+    the RING (via the '/bootstrap/node/join' route), then the NEXT neighbor of that
+    newly inserted node must send part of its database to that new node.
+
+    The data that will be sent are owned by the new node, because they belong to 
+    its keyspace.
+    """
+
+    print("The newly inserted PREVIOUS node requested its data...")
+
     data={}
-    delete=[]
-    for dat in node.storage:
-        hashKey = hashing(dat)
-        if(hexToInt(hashKey) <= hexToInt(node.prev_id) ):
-            data[dat]=node.storage[dat]
-            delete.append(dat)
-    for dat in delete:
-        del node.storage[dat]
-    print("About to send the data that newly inserted node owns.")
-    return data
+    to_be_deleted=[]
 
+    for key in node.storage:
+        hash_key = hashing(key)
+        if(hash_key <= node.prev_id):
+            data[key] = node.storage[key]
+            to_be_deleted.append(key)
+    
+    print("The data that are now owned by the previous node are: ", data)
 
+    for key in to_be_deleted:
+        del node.storage[key]
+
+    print("Our updated database now is:", node.storage)
+
+    return data, 200
 
 
 @app.route('/node/depart', methods=['POST'])
 def depart_node():
+    """
+    This is a route for ALL NODES. 
+    Whenever a client asks for a node to depart, it sends a post request
+    to this route.
+    """
+
+    # The node is about to depart gracefully.
+    print("We are about to depart gracefully...")
     
-    ip = request.form['ip']
-    port = request.form['port']
-
-    print("Node:", ip + ":" + str(port), "wants to depart from the RING network.")
-    url = "http://" + ip + ":" + str(port) + "/node/depart/update"
-    print("The node has to inform it's neighbors.")
-   
-    r = requests.get(url)
-    if r.status_code != 200:
-        print("Something went wrong with updating the next node.")
-        return "Error!"
-
-    return r.text
-    
-
-
-
-@app.route('/node/depart/update', methods=['GET'])
-def update_node_after_depart():
-    # These data will be sent to the PREVIOUS node, so that it can update
-    # its link to the NEXT node of the node that departs
-    data_to_prev = {
+    # We inform our neighbors to update their links.
+    data_prev = {
         'prev_or_next': 'prev',
         'ip': node.next_ip,
-        'port': node.next_port,
-        'id': node.next_id
+        'port': node.next_port
     }
 
-    # This data will be sent to the NEXT node, so that it can update 
-    # its link to its PREVIOUS node of the node that departs.
-    data_to_next = {
-        'prev_or_next': 'next',
-        'ip': node.prev_ip,
-        'port': node.prev_port,
-        'id' : node.prev_id, 
-        'data': node.storage
-    }
+    url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/update/link"
 
-    url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/update/neighbor"
-    print("About to send an update to the previous neighbor of the departed node.")
-    r = requests.post(url_prev, data_to_prev)
+    print("About to send a link update to the PREVIOUS node.")
+    
+    r = requests.post(url_prev, data_prev)
+
     if r.status_code != 200:
         print("Something went wrong with updating the previous node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("The update of the previous node was successful.")
     
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/neighbor"
-    print("About to send an update to the next neighbor of the departed node.")
-    r = requests.post(url_next, data_to_next)
+
+    # This data will be sent to the NEXT node, so that it can update 
+    # its link to its PREVIOUS node now that a new node is inserted.
+    data_next = {
+        'prev_or_next': 'next',
+        'ip': node.prev_ip,
+        'port': node.prev_port
+    }
+    
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/link"
+
+    print("About to send a link update to the NEXT node.")
+
+    r = requests.post(url_next, data_next)
+
     if r.status_code != 200:
         print("Something went wrong with updating the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("The update of the next node was successful.")
+
+    # We send all of our database to the next node, before we depart gracefully.   
+
+    print("About to move our entire database to the next node.")
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
     
-    data= {
+    r = requests.post(url_next, node.storage)
+
+    if r.status_code != 200:
+        print("Something went wrong with moving our data to the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("The update of the database of the next node was successful.")
+
+    print("About to be removed from the ring")
+
+    url_bootstrap = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/bootstrap/update/ring"
+
+    data = {
         'ip': node.my_ip,
         'port': node.my_port
     }
-    url = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/node/depart/final"
-    r = requests.post(url,data)
+
+    r = requests.post(url_bootstrap, data)   
+
     if r.status_code != 200:
-        print("Something went wrong while asking bootstrap to delete you.")
-        return ("Error!")
-    return r.text    
-
-
-
-
-@app.route('/node/update/neighbor', methods=['POST'])
-def update_neighbor():
-
-    print("About to update neighbor's links and storage.")
-    
-    prev_or_next = request.form['prev_or_next']
-    if prev_or_next == 'prev':
-        node.next_ip = request.form['ip']
-        node.next_port = request.form['port']
-        node.next_id = request.form['id']
-    elif prev_or_next == 'next':
-        node.prev_ip = request.form['ip']
-        node.prev_port = request.form['port']
-        node.prev_id = request.form['id']
-        data = request.form['data']
-        for dat in data:
-            node.storage[dat]=data[dat]
-    
+        print("Something went wrong with getting removed from the ring.")
+        return "Something went wrong", r.status_code
     else:
-        print("Something's wrong with prev_or_next")
-        return "Error", 500
-    
-    return "Neighbor is updated", 200
+        print("We were successfully removed from the ring.") 
 
-    
-    
+    return r.text, 200
 
-@app.route('/node/depart/final', methods=['POST'])
-def finally_depart_node():
-   
-    print("About to delete the node.")
+
+@app.route('/node/update/data', methods=['POST'])
+def update_node_data():
+    """
+    This is a route for ALL NODES. 
+    Whenever the PREVIOUS NODE departs from the ring, 
+    all of its data are transfered to us through this route.
+    """
+    print("Some new data have arrived:", request.form)
+    
+    for key in request.form:
+        node.storage[key] = request.form[key]
+
+    print("Our database now looks like this:", node.storage)
+
+    return "The database was successfully updated.", 200
+
+
+@app.route('/bootstrap/update/ring', methods=['POST'])
+def update_ring():
+    """
+    This is a route for the BOOTSTRAP node only. 
+    Whenever a NODE wants to depart from the ring, the bootstrap node removes it from
+    the Ring() structure.
+    """
+
     ip = request.form['ip']
     port = request.form['port']
-    id=get_node_hash_id(ip, port)
-    for dic in ring.ring:
-        if (dic['hash_id']==id and dic['ip']==ip and dic['port']==port):
-            ring.ring.remove(dic)
 
-    return "Node has departed successfully", 200
+    print("About to remove node:", ip + ":" + str(port), "from the ring.")
+    
+    hash_id = get_node_hash_id(ip, port)
+
+    for node in ring.ring:
+        if (node['hash_id'] == hash_id and node['ip'] == ip and node['port'] == port):
+            ring.ring.remove(node)
+            break
+    
+    print("The node was successfully removed.")
+    print("The ring now looks like this:", ring.ring)
+
+    return "The node has departed successfully", 200
+
 
 @app.route('/overlay', methods=['GET'])
 def overlay():
@@ -344,11 +436,6 @@ def overlay():
     for dic in ring.ring:
         ans+="Node with ip: " + dic['ip'] + ", port: " + str(dic['port']) + " and id: " +  str(hexToInt(dic['hash_id'])) + '\n'
     return ans
-
-
-
-
-
 
 
 if __name__ == '__main__':
@@ -391,6 +478,7 @@ if __name__ == '__main__':
         )
 
         node.my_id = get_node_hash_id(bootstrap_ip, bootstrap_port)
+        print("Our hash ID is:", node.my_id)
         node.prev_id = node.my_id
         node.next_id = node.my_id
 
@@ -408,8 +496,11 @@ if __name__ == '__main__':
         )
 
         node.my_id = get_node_hash_id(host, port)
+        print("Our hash ID is:", node.my_id)
         
         # Before this regular node-server can run, it must be inserted in the ring network.
+        print("About to get inserted to the ring...")
+        
         response = insert_node_to_ring( 
             hash_id = node.my_id,
             node_ip = host, 
@@ -424,16 +515,21 @@ if __name__ == '__main__':
         node.next_port = response['next_port']
         node.next_id = get_node_hash_id(node.next_ip, node.next_port)
 
-        print("The node was successfully inserted to the ring network.")
+        print("We were successfully inserted to the ring network.")
         print("The previous node has IP:", node.prev_ip, ", port:", node.prev_port, "and hash:", node.prev_id)
         print("The next node has IP:", node.next_ip, ", port:", node.next_port, "and hash:", node.next_id)
 
-        url = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/sendyourdata"
-        print("About to send an update to the next neighbor of the newly inserted node.")
-        r2 = requests.get(url)
-        dictionary=r2.json()
-        for dat in dictionary:
-            node.storage[dat]=dictionary[dat]
+        print("About to ask the next node for our data...")
+        
+        response = get_data_from_next_node(
+            node_ip=node.next_ip, 
+            node_port=node.next_port
+        )
+
+        for key in response:
+            node.storage[key]=response[key]
+        
+        print("The data was successfully transfered, here is our database:")
         print(node.storage)
 
     app.run(host=host, port=port)

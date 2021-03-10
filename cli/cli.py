@@ -11,9 +11,10 @@ def toychord():
 @toychord.command()
 @click.option('--key', required=True, type=str)
 @click.option('--value', required=True, type=str)
-def insert(key, value):
-    url = base_url + '/insert'
-    
+@click.option('--host', default=bootstrap_ip, type=str)
+@click.option('--port', default=bootstrap_port, type=int)
+def insert(key, value, host, port):
+    url = 'http://' + host + ':' + str(port) + '/insert'
     data = {
         'key' : key,
         'value' : value
@@ -22,14 +23,17 @@ def insert(key, value):
     r = requests.post(url, data)
 
     if(r.status_code == 200):
-        click.echo(f'The key value pair was inserted!')
+        click.echo(f'The key value pair was successfully inserted!')
     else:
-        click.echo(f'Something went wrong.')
+        click.echo(f'Something went wrong with inserting the key-value pair.')
+
 
 @toychord.command()
 @click.option('--key', required=True, type=str)
-def delete(key):
-    url = base_url + '/delete'
+@click.option('--host', default=bootstrap_ip, type=str)
+@click.option('--port', default=bootstrap_port, type=int)
+def delete(key, host, port):
+    url = 'http://' + host + ':' + str(port) + '/delete'
 
     data = {
         'key' : key
@@ -39,47 +43,45 @@ def delete(key):
 
     click.echo(r.text)
 
+
 @toychord.command()
 @click.option('--key', required=True, type=str)
-def query(key):
+@click.option('--host', default=bootstrap_ip, type=str)
+@click.option('--port', default=bootstrap_port, type=int)
+def query(key, host, port):
     
-    url = base_url + '/query/' + key 
+    url = 'http://' + host + ':' + str(port) + '/query/' + key
 
     r = requests.get(url)
 
-    if(r.status_code == 200):
-        click.echo(r.text)
-    else:
-        click.echo("That song doesn't exist.")
+    click.echo(r.text)
 
 
 @toychord.command()
-@click.option('--nodekey', required=True, type=str)
-def depart(nodekey):
-    url = base_url + '/depart'
+@click.option('--host', required=True, type=str)
+@click.option('--port', required=True, type=int)
+def depart(host, port):
+    
+    url = 'http://' + host + ':' + str(port) + '/node/depart'
    
     data = {
-        'nodekey' : nodekey
+        'host' : host,
+        'port' : port
     }
 
-    r = requests.post(url, data=data)
+    r = requests.post(url, {})
 
-    if(r.status_code == 200):
-        click.echo(f'The node has departed.')
-    else:
-        click.echo(f'Something went wrong.')
+    click.echo(r.text)
+
 
 @toychord.command()
 def overlay():
     url = base_url + '/overlay'
    
-    r = requests.get(url, data=data)
+    r = requests.get(url)
 
-    if(r.status_code == 200):
-        click.echo(f'{r.content}')
-    else:
-        click.echo(f'Something went wrong.')
+    click.echo(r.text)
+
 
 if __name__ == '__main__':
-
     toychord()
