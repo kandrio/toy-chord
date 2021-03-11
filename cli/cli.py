@@ -21,6 +21,16 @@ def insert(key, value, host, port):
     }
 
     r = requests.post(url, data)
+    
+    """
+    url = 'http://' + host + ':' + str(port)  + '/insert/replicas'
+    data = {
+        'key' : key,
+        'value' : value
+    }
+
+    r = requests.post(url, data)
+    """
 
     if(r.status_code == 200):
         click.echo(f'The key value pair was successfully inserted!')
@@ -40,7 +50,15 @@ def delete(key, host, port):
     }
 
     r = requests.post(url, data)
+    """
+    url = 'http://' + host + ':' + str(port) + '/delete/replicas'
 
+    data = {
+        'key' : key
+    }
+
+    r = requests.post(url, data)
+    """
     click.echo(r.text)
 
 
