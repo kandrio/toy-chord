@@ -2,7 +2,7 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt
+from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas
 import requests
 import argparse
 import json
@@ -34,6 +34,19 @@ def insert():
         node.storage[key]=value
         print("A key-value pair with key:", key + ", and hash key:", hash_key, "was inserted/updated.")
         print("Our database now is:", node.storage)
+        
+        data = {
+            'id' : node.my_id, 
+            'key': key,
+            'value' : value,
+            'k' : K_replicas-1
+        }
+
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
+        r = requests.post(url_next, data)
+        if r.status_code != 200:
+            print("Something went wrong with retransmiting a key-value pair.")
+            return "Something went wrong with retransmiting the key-value pair.", 500
         return "The key-value pair was successfully inserted.", 200
     else:
         # Otherwise, retransmit the data to the NEXT node.
@@ -51,6 +64,30 @@ def insert():
 
         return r.text 
     
+@app.route('/insert/replicas', methods=['POST'])
+def replicas_on_insert():
+    
+    start_id = request.form['id']
+    key = request.form['key']
+    value= request.form['value']
+    k = int(request.form['k'])
+
+    if (k==0 or node.my_id==start_id):
+        return "Replicas have been inserted!"
+    data_to_next = {
+        'id' : start_id, 
+        'key': key,
+        'value' : value,
+        'k' : k-1
+    }
+    
+    node.storage[key]=value
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
+    print("Informing the next neighbor to update it's replicas.")
+    r = requests.post(url_next, data_to_next)
+    if r.status_code != 200:
+        print("Something went wrong with updating replicas of next node.")
+    return r.text
 
 @app.route('/delete', methods=['POST'])
 def delete():
@@ -72,6 +109,18 @@ def delete():
             print("The key:", key, "was deleted from our database.")
             print("The database now looks like this:", node.storage)
             
+            data = {
+                'id' : node.my_id, 
+                'key': key,
+                'k' : K_replicas-1
+            }
+
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
+            r = requests.post(url_next, data)
+            if r.status_code != 200:
+                print("Something went wrong with retransmiting a key-value pair.")
+                return "Something went wrong with retransmiting the key-value pair.", 500
+
             response = "The key-value pair was successfully deleted."
             status = 200
         else:
@@ -92,6 +141,29 @@ def delete():
 
     return response, status
 
+@app.route('/delete/replicas', methods=['POST'])
+def replicas_on_delete():
+    
+    start_id = request.form['id']
+    key = request.form['key']
+    k = int(request.form['k'])
+
+    if (k==0 or node.my_id==start_id):
+        return "Replicas have been deleted!"
+    data_to_next = {
+        'id' : start_id, 
+        'key': key,
+        'k' : k-1
+    }
+    if ( key in node.storage):
+            # delete item
+        del node.storage[key]
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
+    print("Informing the next neighbor to update it's replicas.")
+    r = requests.post(url_next, data_to_next)
+    if r.status_code != 200:
+        print("Something went wrong with deleting replicas of the next node.")
+    return r.text
 
 @app.route('/query/<key>', methods=['GET'])
 def query(key):
@@ -108,7 +180,7 @@ def query(key):
         # the ring network.
         url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/bootstrap/queryall"
         r = requests.get(url_next)
-        return r.text, 200
+        return r.text[:-1], 200
     
     if between(hash_key, node.my_id, node.prev_id):
         # If we are the node that owns the hash key.
@@ -122,10 +194,26 @@ def query(key):
             status = 200
     else:
         # Otherwise, we "ask" the next node for the key-value pair.
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
-        r = requests.get(url_next)
-        response = r.text
-        status = r.status_code
+        if key not in node.storage:
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
+            r = requests.get(url_next)
+            response = r.text
+            status = r.status_code
+        else:
+            data_to_next = {
+                'id' : node.my_id, 
+                'key': key,
+            }
+
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
+            print("Submitting the query to the next node.")
+            r = requests.post(url_next, data_to_next)
+            if r.status_code == 418:
+                response = node.storage[key]
+                status = 200
+            else:
+                response = r.text
+                status = r.status_code
     
     return response, status
     
@@ -156,6 +244,31 @@ def query_all():
 
     return response, status
 
+@app.route('/query/replicas', methods=['POST'])
+def replicas_on_query():
+    
+    start_id = request.form['id']
+    key = request.form['key']
+
+    if key not in node.storage:
+        return "No data", 418
+    elif start_id==node.my_id:
+        return "It's rewind time", 418
+
+    data_to_next = {
+        'id' : start_id, 
+        'key': key,
+    }
+
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
+    print("Submitting the query to the next node.")
+    r = requests.post(url_next, data_to_next)
+    if r.status_code == 418:
+        return node.storage[key], 200
+    elif r.status_code != 200:
+        print("Something went wrong while forwarding the query to the next node.")
+    return r.text
+
 
 @app.route('/node/sendalldata', methods=['GET'])
 def send_all_data():
@@ -166,7 +279,7 @@ def send_all_data():
     """
     data = ""
     for key in node.storage:
-        data += node.storage[key]
+        data += '<'+key+', '+node.storage[key]+'>'
         data += "\n"
     
     return data, 200
@@ -438,79 +551,7 @@ def overlay():
     return ans
 
 """
-@app.route('/insert/replicas', methods=['POST'])
-def replicas_on_insert():
-    
-    start_id = request.form['id']
-    key = request.form['key']
-    value= request.form['value']
-    k = request.form['k']
 
-    if (k==0 or node.my_id==start_id):
-        return "Replicas have been inserted!"
-    data_to_next = {
-        'id' : start_id, 
-        'key': key,
-        'value' : value,
-        'k' : k-1
-    }
-    
-    node.storage[key]=value
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
-    print("Informing the next neighbor to update it's replicas.")
-    r = requests.post(url_next, data_to_next)
-    if r.status_code != 200:
-        print("Something went wrong with updating replicas of next node.")
-    return r.text
-
-
-
-@app.route('/delete/replicas', methods=['POST'])
-def replicas_on_delete():
-    
-    start_id = request.form['id']
-    key = request.form['key']
-    k = request.form['k']
-
-    if (k==0 or node.my_id==start_id):
-        return "Replicas have been deleted!"
-    data_to_next = {
-        'id' : start_id, 
-        'key': key,
-        'k' : k-1
-    }
-    if ( key in node.storage):
-            # delete item
-        del node.storage[key]
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
-    print("Informing the next neighbor to update it's replicas.")
-    r = requests.post(url_next, data_to_next)
-    if r.status_code != 200:
-        print("Something went wrong with deleting replicas of the next node.")
-    return r.text
-
-
-@app.route('/query/replicas', methods=['POST'])
-def replicas_on_query():
-    
-    start_id = request.form['id']
-    key = request.form['key']
-    k = request.form['k']
-
-    if (k==0 or start_id==node.my_id):
-        return node.storage[key]
-    data_to_next = {
-        'id' : start_id, 
-        'key': key,
-        'k' : k-1
-    }
-
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
-    print("Informing the next neighbor to update it's replicas.")
-    r = requests.post(url_next, data_to_next)
-    if r.status_code != 200:
-        print("Something went wrong with deleting replicas of the next node.")
-    return r.text
 
 @app.route('/query/replicas2', methods=['POST'])
 def replicas_on_query2():
@@ -582,7 +623,7 @@ if __name__ == '__main__':
         print("Our hash ID is:", node.my_id)
         node.prev_id = node.my_id
         node.next_id = node.my_id
-
+        print("Number of replicas:", K_replicas)
     else:
         # In this case, a regular node is running.
         print("------------")

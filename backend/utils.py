@@ -3,6 +3,8 @@ from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
 import json
 
+K_replicas = 5
+
 def insert_node_to_ring(hash_id: str, node_ip: str, node_port: int):
     """ 
     This function adds a given node to the ring network by sending a request
