@@ -2,7 +2,7 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas
+from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas, type_replicas
 import requests
 import argparse
 import json
@@ -188,12 +188,9 @@ def query(key):
             # The key-value pair doesn't exist in the toy-chord database.
             response = "Sorry, we don't have that song."
             status = 404
-        else:
-            # We found the key-value pair. Returning the value.
-            response = node.storage[key]
-            status = 200
-    else:
-        # Otherwise, we "ask" the next node for the key-value pair.
+            return response, status
+
+    if type_replicas=="linearizability":
         if key not in node.storage:
             url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
             r = requests.get(url_next)
@@ -201,10 +198,10 @@ def query(key):
             status = r.status_code
         else:
             data_to_next = {
-                'id' : node.my_id, 
-                'key': key,
-            }
-
+            'id' : node.my_id, 
+            'key': key
+            }                
+            
             url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
             print("Submitting the query to the next node.")
             r = requests.post(url_next, data_to_next)
@@ -214,6 +211,16 @@ def query(key):
             else:
                 response = r.text
                 status = r.status_code
+
+    elif type_replicas=="eventual consistency": 
+        if key not in node.storage:
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
+            r = requests.get(url_next)
+            response = r.text
+            status = r.status_code
+        else:
+            response = node.storage[key]
+            status = 200
     
     return response, status
     
@@ -255,9 +262,10 @@ def replicas_on_query():
     elif start_id==node.my_id:
         return "It's rewind time", 418
 
+
     data_to_next = {
         'id' : start_id, 
-        'key': key,
+        'key': key
     }
 
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
@@ -550,34 +558,7 @@ def overlay():
         ans+="Node with ip: " + dic['ip'] + ", port: " + str(dic['port']) + " and id: " +  str(hexToInt(dic['hash_id'])) + '\n'
     return ans
 
-"""
 
-
-@app.route('/query/replicas2', methods=['POST'])
-def replicas_on_query2():
-    
-    key = request.form['key']
-    hash_key=hashing(key)
-
-    data_to_next = {
-        'key': key
-    }
-    if (key in node.storage):
-            # delete item
-        return node.storage[key]
-    elif between(hash_key, node.my_id, node.prev_id):
-        response = "There isn't such a key-value pair."
-        status = 404
-        return response, status
-        
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas2"
-    print("Informing the next neighbor to update it's replicas.")
-    r = requests.post(url_next, data_to_next)
-    if r.status_code != 200:
-        print("Something went wrong with deleting replicas of the next node.")
-    return r.text
-
-"""
 
 
 if __name__ == '__main__':

@@ -4,6 +4,9 @@ from hashlib import sha1
 import json
 
 K_replicas = 5
+type1="linearizability"
+type2="eventual consistency"
+type_replicas=type1
 
 def insert_node_to_ring(hash_id: str, node_ip: str, node_port: int):
     """ 
