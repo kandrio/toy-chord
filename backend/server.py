@@ -28,25 +28,25 @@ def insert():
     # Hash the key of the inserted key-value pair in order to find the node 
     # that it's owned by.
     hash_key = hashing(key)
-
     if between(hash_key, node.my_id, node.prev_id):
         # If you are the node that owns this hask key, insert the key-value pair in your database.
         node.storage[key]=value
         print("A key-value pair with key:", key + ", and hash key:", hash_key, "was inserted/updated.")
         print("Our database now is:", node.storage)
-        
-        data = {
+        if (node.next_id != node.my_id):
+            data = {
             'id' : node.my_id, 
             'key': key,
             'value' : value,
             'k' : K_replicas-1
-        }
+            }
 
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
-        r = requests.post(url_next, data)
-        if r.status_code != 200:
-            print("Something went wrong with retransmiting a key-value pair.")
-            return "Something went wrong with retransmiting the key-value pair.", 500
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
+            r = requests.post(url_next, data)
+            if r.status_code != 200:
+                print("Something went wrong with retransmiting a key-value pair.")
+                return "Something went wrong with retransmiting the key-value pair.", 500
+            return "The key-value pair was successfully inserted.", 200
         return "The key-value pair was successfully inserted.", 200
     else:
         # Otherwise, retransmit the data to the NEXT node.
@@ -66,13 +66,13 @@ def insert():
     
 @app.route('/insert/replicas', methods=['POST'])
 def replicas_on_insert():
-    
     start_id = request.form['id']
     key = request.form['key']
     value= request.form['value']
     k = int(request.form['k'])
-
-    if (k==0 or node.my_id==start_id):
+    
+    node.storage[key]=value
+    if (k==0 or node.next_id==start_id):
         return "Replicas have been inserted!"
     data_to_next = {
         'id' : start_id, 
@@ -81,7 +81,7 @@ def replicas_on_insert():
         'k' : k-1
     }
     
-    node.storage[key]=value
+    
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
     print("Informing the next neighbor to update it's replicas.")
     r = requests.post(url_next, data_to_next)
@@ -108,18 +108,19 @@ def delete():
             
             print("The key:", key, "was deleted from our database.")
             print("The database now looks like this:", node.storage)
-            
-            data = {
+                    
+            if (node.next_id != node.my_id):
+                data = {
                 'id' : node.my_id, 
                 'key': key,
                 'k' : K_replicas-1
-            }
+                }
 
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
-            r = requests.post(url_next, data)
-            if r.status_code != 200:
-                print("Something went wrong with retransmiting a key-value pair.")
-                return "Something went wrong with retransmiting the key-value pair.", 500
+                url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
+                r = requests.post(url_next, data)
+                if r.status_code != 200:
+                    print("Something went wrong with retransmiting a key-value pair.")
+                    return "Something went wrong with retransmiting the key-value pair.", 500
 
             response = "The key-value pair was successfully deleted."
             status = 200
@@ -147,17 +148,18 @@ def replicas_on_delete():
     start_id = request.form['id']
     key = request.form['key']
     k = int(request.form['k'])
-
-    if (k==0 or node.my_id==start_id):
+    
+    if ( key in node.storage):
+            # delete item
+        del node.storage[key]
+    if (k==0 or node.next_id==start_id):
         return "Replicas have been deleted!"
     data_to_next = {
         'id' : start_id, 
         'key': key,
         'k' : k-1
     }
-    if ( key in node.storage):
-            # delete item
-        del node.storage[key]
+    
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
     print("Informing the next neighbor to update it's replicas.")
     r = requests.post(url_next, data_to_next)
@@ -525,8 +527,9 @@ def update_node_data():
     
     for key in data:
         node.storage[key] = data[key]
+    print("Our database now looks like this:", node.storage)
+
     if (k==0):
-        print("Our database now looks like this:", node.storage)
         return "The database was successfully updated.", 200
     
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"

@@ -3,7 +3,7 @@ from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
 import json
 
-K_replicas = 5
+K_replicas = 3
 type1="linearizability"
 type2="eventual consistency"
 type_replicas=type1
@@ -61,3 +61,4 @@ def between(song_hash, curr_node_hash, prev_node_hash):
         return (song_hash <= curr_node_hash and song_hash > prev_node_hash)  
     elif (curr_node_hash < prev_node_hash):
         return (song_hash <= curr_node_hash or song_hash > prev_node_hash)
+    return True
