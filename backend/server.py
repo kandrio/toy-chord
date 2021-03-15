@@ -410,18 +410,15 @@ def send_your_data():
     print("The newly inserted PREVIOUS node requested its data...")
 
     data={}
-    to_be_deleted=[]
 
     for key in node.storage:
         hash_key = hashing(key)
         if(hash_key <= node.prev_id):
             data[key] = node.storage[key]
-            to_be_deleted.append(key)
     
     print("The data that are now owned by the previous node are: ", data)
 
-    for key in to_be_deleted:
-        del node.storage[key]
+
 
     print("Our updated database now is:", node.storage)
 
@@ -483,7 +480,7 @@ def depart_node():
 
     print("About to move our entire database to the next node.")
     if type_replicas=="linearizability":
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data/depart"
         data=node.storage
         data['start_id'] = node.next_id
         r = requests.post(url_next, data)
@@ -514,8 +511,8 @@ def depart_node():
     return r.text, 200
 
 
-@app.route('/node/update/data', methods=['POST'])
-def update_node_data():
+@app.route('/node/update/data/depart', methods=['POST'])
+def update_node_data_depart():
     """
     This is a route for ALL NODES. 
     Whenever the PREVIOUS NODE departs from the ring, 
@@ -540,7 +537,7 @@ def update_node_data():
     if not prev_storage or  node.next_id == start_id:
         return "The database was successfully updated.", 200
     
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data/depart"
     data_to_next= prev_storage
     data_to_next['start_id']=start_id
     r = requests.post(url_next, data_to_next)
@@ -550,6 +547,55 @@ def update_node_data():
         return "Something went wrong", r.status_code
     else:
         return r.text
+
+
+
+
+@app.route('/node/update/data/join', methods=['POST'])
+def update_node_data_join():
+    """
+    This is a route for ALL NODES. 
+    Whenever the PREVIOUS NODE departs from the ring, 
+    all of its data are transfered to us through this route.
+    """
+
+    prev_storage = {}
+    to_be_deleted={}
+    for key in request.form:
+        if key not in node.storage:
+            to_be_deleted[key]=0
+        else:
+            prev_storage[key] = request.form[key]
+    
+    if (to_be_deleted):
+        url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/deleteyourdata"
+        r = requests.post(url_prev, to_be_deleted)
+
+    if not prev_storage:
+        return "The database was successfully updated.", 200
+    
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data/join"
+    r = requests.post(url_next, prev_storage)
+
+    if r.status_code != 200:
+        print("Something went wrong with moving our data to the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        return r.text
+
+
+@app.route('/node/deleteyourdata', methods=['POST'])
+def delete_your_data():
+ 
+    for key in request.form:
+        if key in node.storage:
+            del  node.storage[key]
+        else:
+            print("this key", key, " wasn't here")
+            return "Error!", 404
+    return "Keys were successfully deleted!", 200
+
+
 
 
 @app.route('/bootstrap/update/ring', methods=['POST'])
@@ -679,13 +725,11 @@ if __name__ == '__main__':
         for key in response:
             node.storage[key]=response[key]
         
-        if type_replicas=="linearizability":
-            respone = call_update_data (
+        res = call_update_data (
             data= response,
-            k= K_replicas-1,
             next_ip=node.next_ip, 
             next_port=node.next_port   
-            )
+        )
         
         
         print("The data was successfully transfered, here is our database:")
