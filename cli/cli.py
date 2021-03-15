@@ -67,10 +67,12 @@ def delete(key, host, port):
 @click.option('--host', default=bootstrap_ip, type=str)
 @click.option('--port', default=bootstrap_port, type=int)
 def query(key, host, port):
-    
-    url = 'http://' + host + ':' + str(port) + '/query/' + key
+    url = 'http://' + host + ':' + str(port) + '/query' 
+    data = {
+        'key' : key
+    }
 
-    r = requests.get(url)
+    r = requests.post(url, data)
 
     click.echo(r.text)
 

@@ -169,13 +169,13 @@ def replicas_on_delete():
         print("Something went wrong with deleting replicas of the next node.")
     return r.text
 
-@app.route('/query/<key>', methods=['GET'])
-def query(key):
+@app.route('/query', methods=['POST'])
+def query():
     """
     This is a route for ALL NODES. The client sends a get request to this route,
     so that the value of a key-value pair is retrieved.
     """
-
+    key = request.form['key']
     hash_key = hashing(key)
     
     if (key=='*'):
@@ -196,8 +196,12 @@ def query(key):
 
     if type_replicas=="linearizability":
         if key not in node.storage:
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
-            r = requests.get(url_next)
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
+            data = {
+                'key' : key
+            }
+
+            r = requests.post(url_next, data)
             response = r.text
             status = r.status_code
         else:
@@ -218,8 +222,12 @@ def query(key):
 
     elif type_replicas=="eventual consistency": 
         if key not in node.storage:
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/" + key
-            r = requests.get(url_next)
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
+            data = {
+                'key' : key
+            }
+
+            r = requests.post(url_next, data)
             response = r.text
             status = r.status_code
         else:
@@ -289,7 +297,7 @@ def send_all_data():
     pairs in the database, through the "/query/*" route, then the BOOTSTRAP node sends 
     a request to this route of of every REGULAR node, in order to collect their databases.
     """
-    data = ""
+    data = "NodeID: "+str(hexToInt(node.my_id))+"\n"
     for key in node.storage:
         data += '<'+key+', '+node.storage[key]+'>'
         data += "\n"
@@ -570,6 +578,8 @@ def update_node_data_join():
     if (to_be_deleted):
         url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/deleteyourdata"
         r = requests.post(url_prev, to_be_deleted)
+
+    #if node.next_id == start_id:
 
     if not prev_storage:
         return "The database was successfully updated.", 200
