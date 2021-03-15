@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from flask import Flask, request
 from node import Node
 from ring import Ring
@@ -35,10 +37,10 @@ def insert():
         print("Our database now is:", node.storage)
         if (node.next_id != node.my_id):
             data = {
-            'id' : node.my_id, 
-            'key': key,
-            'value' : value,
-            'k' : K_replicas-1
+                'id' : node.my_id, 
+                'key': key,
+                'value' : value,
+                'k' : K_replicas-1
             }
 
             url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
@@ -71,9 +73,9 @@ def replicas_on_insert():
     value= request.form['value']
     k = int(request.form['k'])
     
-    node.storage[key]=value
     if (k==0 or node.next_id==start_id):
         return "Replicas have been inserted!"
+    node.storage[key]=value
     data_to_next = {
         'id' : start_id, 
         'key': key,
@@ -111,9 +113,9 @@ def delete():
                     
             if (node.next_id != node.my_id):
                 data = {
-                'id' : node.my_id, 
-                'key': key,
-                'k' : K_replicas-1
+                    'id' : node.my_id, 
+                    'key': key,
+                    'k' : K_replicas-1
                 }
 
                 url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
@@ -482,10 +484,8 @@ def depart_node():
     print("About to move our entire database to the next node.")
     if type_replicas=="linearizability":
         url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
-        data={
-        "data": node.storage,
-        "k": K_replicas -1   
-        }
+        data=node.storage
+        data['start_id'] = node.next_id
         r = requests.post(url_next, data)
 
         if r.status_code != 200:
@@ -521,29 +521,35 @@ def update_node_data():
     Whenever the PREVIOUS NODE departs from the ring, 
     all of its data are transfered to us through this route.
     """
-    data = request.form['data']
-    k = request.form['k']
-    print("Some new data have arrived:", data)
-    
-    for key in data:
-        node.storage[key] = data[key]
+    start_id = request.form['start_id']
+    prev_storage = {}
+    for key in request.form:
+        prev_storage[key] = request.form[key]
+    del prev_storage['start_id']
+    print("Some new data have arrived:", type(prev_storage))
+    to_be_deleted = []
+    for key in prev_storage:
+        if key not in node.storage:
+            node.storage[key] = prev_storage[key]
+            to_be_deleted.append(key)
+    for key in to_be_deleted:
+        del prev_storage[key]
+
     print("Our database now looks like this:", node.storage)
 
-    if (k==0):
+    if not prev_storage or  node.next_id == start_id:
         return "The database was successfully updated.", 200
     
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
-    data={
-     "data": node.storage,
-     "k": k -1   
-    }
-    r = requests.post(url_next, data)
+    data_to_next= prev_storage
+    data_to_next['start_id']=start_id
+    r = requests.post(url_next, data_to_next)
 
     if r.status_code != 200:
         print("Something went wrong with moving our data to the next node.")
         return "Something went wrong", r.status_code
     else:
-        print("The update of the database of the next node was successful.")
+        return r.text
 
 
 @app.route('/bootstrap/update/ring', methods=['POST'])
@@ -592,7 +598,7 @@ if __name__ == '__main__':
     # its host IP, its port and whether it is a bootstrap node or not. 
     parser.add_argument('--host', type = str, default="127.0.0.1")
     parser.add_argument('--port', type = int, default=5000)
-    parser.add_argument('--is_bootstrap', type = bool, default=False)
+    parser.add_argument('--is_bootstrap', action='store_true')
 
     args = parser.parse_args()
 
