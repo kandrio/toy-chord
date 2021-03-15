@@ -32,6 +32,19 @@ def get_data_from_next_node(node_ip: str , node_port: int):
 
     return r.json()
 
+def call_update_data(data, k, next_ip, next_port):
+    url_next = "http://" + next_ip + ":" + str(next_port) + "/node/update/data"
+    data_sent={
+    "data": data,
+    "k": k   
+    }
+    r = requests.post(url_next, data_sent)
+    if r.status_code != 200:
+        print("Something went wrong with moving our data to the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("The update of the database of the next node was successful.")
+
 def get_node_hash_id(node_ip: str, node_port: int):
     name = node_ip + str(node_port)
     bytes_name = name.encode('utf-8')

@@ -2,7 +2,7 @@ from flask import Flask, request
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas, type_replicas
+from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas, type_replicas, call_update_data
 import requests
 import argparse
 import json
@@ -478,15 +478,19 @@ def depart_node():
     # We send all of our database to the next node, before we depart gracefully.   
 
     print("About to move our entire database to the next node.")
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
-    
-    r = requests.post(url_next, node.storage)
+    if type_replicas=="linearizability":
+        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
+        data={
+        "data": node.storage,
+        "k": K_replicas -1   
+        }
+        r = requests.post(url_next, data)
 
-    if r.status_code != 200:
-        print("Something went wrong with moving our data to the next node.")
-        return "Something went wrong", r.status_code
-    else:
-        print("The update of the database of the next node was successful.")
+        if r.status_code != 200:
+            print("Something went wrong with moving our data to the next node.")
+            return "Something went wrong", r.status_code
+        else:
+            print("The update of the database of the next node was successful.")
 
     print("About to be removed from the ring")
 
@@ -515,14 +519,28 @@ def update_node_data():
     Whenever the PREVIOUS NODE departs from the ring, 
     all of its data are transfered to us through this route.
     """
-    print("Some new data have arrived:", request.form)
+    data = request.form['data']
+    k = request.form['k']
+    print("Some new data have arrived:", data)
     
-    for key in request.form:
-        node.storage[key] = request.form[key]
+    for key in data:
+        node.storage[key] = data[key]
+    if (k==0):
+        print("Our database now looks like this:", node.storage)
+        return "The database was successfully updated.", 200
+    
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data"
+    data={
+     "data": node.storage,
+     "k": k -1   
+    }
+    r = requests.post(url_next, data)
 
-    print("Our database now looks like this:", node.storage)
-
-    return "The database was successfully updated.", 200
+    if r.status_code != 200:
+        print("Something went wrong with moving our data to the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("The update of the database of the next node was successful.")
 
 
 @app.route('/bootstrap/update/ring', methods=['POST'])
@@ -651,6 +669,15 @@ if __name__ == '__main__':
 
         for key in response:
             node.storage[key]=response[key]
+        
+        if type_replicas=="linearizability":
+            respone = call_update_data (
+            data= response,
+            k= K_replicas-1,
+            next_ip=node.next_ip, 
+            next_port=node.next_port   
+            )
+        
         
         print("The data was successfully transfered, here is our database:")
         print(node.storage)
