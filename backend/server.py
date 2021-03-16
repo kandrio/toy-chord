@@ -73,9 +73,11 @@ def replicas_on_insert():
     value= request.form['value']
     k = int(request.form['k'])
     
-    if (k==0 or node.next_id==start_id):
-        return "Replicas have been inserted!"
+    if (k==0):
+        return "Replicas have been inserted!", 200
     node.storage[key]=value
+    if (node.next_id==start_id):
+        return "Replicas have been inserted!", 200
     data_to_next = {
         'id' : start_id, 
         'key': key,
@@ -566,24 +568,35 @@ def update_node_data_join():
     Whenever the PREVIOUS NODE departs from the ring, 
     all of its data are transfered to us through this route.
     """
-
+    start_id = request.form['start_id']
+    k = int(request.form['k'])
     prev_storage = {}
     to_be_deleted={}
     for key in request.form:
+        if key == 'k' or key == 'start_id':
+            continue
         if key not in node.storage:
             to_be_deleted[key]=0
         else:
             prev_storage[key] = request.form[key]
+
+    if node.next_id == start_id:
+        if k > 0:
+            return "Get the rest keys.", 418
+        else:
+            for key in prev_storage:
+                del node.storage[key]
+            prev_storage = {}
     
     if (to_be_deleted):
         url_prev = "http://" + node.prev_ip + ":" + str(node.prev_port) + "/node/deleteyourdata"
         r = requests.post(url_prev, to_be_deleted)
 
-    #if node.next_id == start_id:
-
     if not prev_storage:
         return "The database was successfully updated.", 200
-    
+
+    prev_storage['start_id'] = start_id
+    prev_storage['k'] = k - 1    
     url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/update/data/join"
     r = requests.post(url_next, prev_storage)
 
@@ -593,6 +606,9 @@ def update_node_data_join():
     else:
         return r.text
 
+@app.route('/node/join/sendalldata', methods=['GET'])
+def send_all_replicas():
+    return node.storage, 200
 
 @app.route('/node/deleteyourdata', methods=['POST'])
 def delete_your_data():
@@ -737,10 +753,18 @@ if __name__ == '__main__':
         
         res = call_update_data (
             data= response,
+            my_id= node.my_id,
             next_ip=node.next_ip, 
             next_port=node.next_port   
         )
-        
+
+        if res[1] == 418:
+            print("Got status code 418, should ask my neighbour for all his keys")
+            next_node_url = "http://" + node.next_ip + ":" + str(node.next_port) + "/node/join/sendalldata"  
+            r = requests.get(next_node_url)
+            response = r.json()
+            for key in response:
+                node.storage[key]=response[key]    
         
         print("The data was successfully transfered, here is our database:")
         print(node.storage)

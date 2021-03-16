@@ -3,7 +3,7 @@ from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
 import json
 
-K_replicas = 3
+K_replicas = 5
 type1="linearizability"
 type2="eventual consistency"
 type_replicas=type1
@@ -32,14 +32,18 @@ def get_data_from_next_node(node_ip: str , node_port: int):
 
     return r.json()
 
-def call_update_data(data, next_ip, next_port):
-    url_next = "http://" + next_ip + ":" + str(next_port) + "/node/update/data/join"
-    r = requests.post(url_next, data)
-    if r.status_code != 200:
-        print("Something went wrong with moving our data to the next node.")
-        return "Something went wrong", r.status_code
-    else:
-        return r.text
+def call_update_data(data, my_id, next_ip, next_port):
+	data['start_id'] = my_id
+	data['k'] = K_replicas-1
+	url_next = "http://" + next_ip + ":" + str(next_port) + "/node/update/data/join"
+	r = requests.post(url_next, data)
+	if r.status_code == 418:
+		return r.text, r.status_code
+	if r.status_code != 200:
+		print("Something went wrong with moving our data to the next node.")
+		return "Something went wrong", r.status_code
+	else:
+		return r.text, 200
 
 def get_node_hash_id(node_ip: str, node_port: int):
     name = node_ip + str(node_port)
