@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 
 from flask import Flask, request
+from threading import Thread
 from node import Node
 from ring import Ring
 from config import bootstrap_ip, bootstrap_port
-from utils import insert_node_to_ring, get_data_from_next_node, get_node_hash_id, between, hashing, hexToInt, K_replicas, type_replicas, call_update_data
+from utils import (
+    insert_node_to_ring, get_data_from_next_node,
+    get_node_hash_id, between, hashing, hexToInt,
+    K_replicas, type_replicas, call_update_data,
+    forward_replicas_to_next_node
+)
 import requests
 import argparse
-import json
 
 app = Flask(__name__)
 
@@ -17,9 +22,10 @@ node = Node()
 
 @app.route('/insert', methods=['POST'])
 def insert():
-    """ 
-    This is a route for ALL NODES. 
-    The client sends post requests to this route so that new key-value pairs
+    """
+    This is a route for ALL NODES.
+
+    The client sends POST requests to this route so that new key-value pairs
     are inserted.
     """
 
@@ -27,33 +33,58 @@ def insert():
     key = request.form['key']
     value = request.form['value']
 
-    # Hash the key of the inserted key-value pair in order to find the node 
+    # Hash the key of the inserted key-value pair in order to find the node
     # that it's owned by.
     hash_key = hashing(key)
-    if between(hash_key, node.my_id, node.prev_id):
-        # If you are the node that owns this hask key, insert the key-value pair in your database.
-        node.storage[key]=value
-        print("A key-value pair with key:", key + ", and hash key:", hash_key, "was inserted/updated.")
-        print("Our database now is:", node.storage)
-        if (node.next_id != node.my_id):
-            data = {
-                'id' : node.my_id, 
-                'key': key,
-                'value' : value,
-                'k' : K_replicas-1
-            }
 
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
-            r = requests.post(url_next, data)
-            if r.status_code != 200:
-                print("Something went wrong with retransmiting a key-value pair.")
-                return "Something went wrong with retransmiting the key-value pair.", 500
-            return "The key-value pair was successfully inserted.", 200
+    if between(hash_key, node.my_id, node.prev_id):
+        # If we are the node that owns this hask key,
+        # we insert the key-value pair in our database.
+
+        node.storage[key] = value
+        print(
+            "A key-value pair with key:", key,
+            "and hash:", hash_key, "was inserted/updated."
+        )
+        print("Our database now looks like this:", node.storage)
+
+        # If we aren't the only Node in the Ring, we forward the key-value pair
+        # to the next node while decreasing the replication factor by 1.
+        if (node.next_id != node.my_id):
+            if type_replicas == "eventual consistency":
+                # In this case, we start a thread that handles the
+                # forwarding of the key-value pair to the next nodes
+
+                thread = Thread(
+                    target=forward_replicas_to_next_node,
+                    args=(key, value, node)
+                )
+
+                thread.start()
+
+                # We don't care if the forwarding of the key-value pair has
+                # completed. We return a response and a status code to the
+                # user.
+                message = "The key-value pair was successfully inserted."
+                status_code = 200
+            elif type_replicas == "linearizability":
+                # In this case, we wait until the key-value pair is inserted
+                # in the next nodes and then we return a response to the user.
+                message, status_code = forward_replicas_to_next_node(
+                    key=key,
+                    value=value,
+                    node=node
+                )
+            return message, status_code
+
         return "The key-value pair was successfully inserted.", 200
     else:
-        # Otherwise, retransmit the data to the NEXT node.
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert"
-        
+        # Otherwise, if we don't own the hash key, we forward the data
+        # to the NEXT node. The data will be forwarded by the next nodes
+        # until they reach the node that is responsible for the hash key.
+        url_next = "http://" + node.next_ip + ":" + \
+            str(node.next_port) + "/insert"
+
         data = {
             'key': key,
             'value': value,
@@ -61,11 +92,13 @@ def insert():
 
         r = requests.post(url_next, data)
         if r.status_code != 200:
-            print("Something went wrong with retransmiting a key-value pair.")
-            return "Something went wrong with retransmiting the key-value pair.", 500
+            message = "Error while retransmitting the key-value pair."
+            print(message)
+            return message, 500
 
-        return r.text 
-    
+        return r.text
+
+
 @app.route('/insert/replicas', methods=['POST'])
 def replicas_on_insert():
     start_id = request.form['id']
@@ -196,7 +229,7 @@ def query():
             status = 404
             return response, status
 
-    if type_replicas=="linearizability":
+    if type_replicas == "linearizability":
         if key not in node.storage:
             url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
             data = {

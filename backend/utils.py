@@ -1,9 +1,9 @@
 import requests
+from node import Node
 from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
-import json
 
-K_replicas = 5
+K_replicas = 3
 type1="linearizability"
 type2="eventual consistency"
 type_replicas=type1
@@ -62,3 +62,26 @@ def between(song_hash, curr_node_hash, prev_node_hash):
     elif (curr_node_hash < prev_node_hash):
         return (song_hash <= curr_node_hash or song_hash > prev_node_hash)
     return True
+
+def forward_replicas_to_next_node(key, value, node: Node):
+
+    data = {
+        'id': node.my_id,
+        'key': key,
+        'value': value,
+        'k': K_replicas-1
+    }
+
+    url_next = "http://" + node.next_ip + ":" \
+        + str(node.next_port) + "/insert/replicas"
+
+    r = requests.post(url_next, data)
+
+    if r.status_code != 200:
+        message = "Error while retransmitting the key-value pair:\
+            with key:" + key + "and value:" + value
+    else:
+        message = "The key-value pair was successfully inserted."
+
+    return message, r.status_code
+    
