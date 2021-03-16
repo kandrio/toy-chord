@@ -103,24 +103,34 @@ def insert():
 def replicas_on_insert():
     start_id = request.form['id']
     key = request.form['key']
-    value= request.form['value']
+    value = request.form['value']
     k = int(request.form['k'])
-    
-    if (k==0):
-        return "Replicas have been inserted!", 200
-    node.storage[key]=value
-    if (node.next_id==start_id):
-        return "Replicas have been inserted!", 200
+
+    if (k == 0):
+        return "All replicas have been inserted!", 200
+
+    node.storage[key] = value
+    print(
+        "The replica with key:", key, "and value:", value,
+        "was successfully inserted."
+    )
+
+    print("Our database now looks like this:\n", node.storage)
+
+    if (node.next_id == start_id):
+        return "All replicas have been inserted!", 200
+
     data_to_next = {
-        'id' : start_id, 
+        'id': start_id,
         'key': key,
-        'value' : value,
-        'k' : k-1
+        'value': value,
+        'k': k-1
     }
-    
-    
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/insert/replicas"
-    print("Informing the next neighbor to update it's replicas.")
+
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) +\
+        "/insert/replicas"
+
+    print("Informing the next node to update its replicas.")
     r = requests.post(url_next, data_to_next)
     if r.status_code != 200:
         print("Something went wrong with updating replicas of next node.")

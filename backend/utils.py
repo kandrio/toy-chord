@@ -1,12 +1,11 @@
 import requests
-from node import Node
 from config import bootstrap_port, bootstrap_ip
 from hashlib import sha1
 
 K_replicas = 3
 type1="linearizability"
 type2="eventual consistency"
-type_replicas=type1
+type_replicas=type2
 
 def insert_node_to_ring(hash_id: str, node_ip: str, node_port: int):
     """ 
@@ -63,7 +62,7 @@ def between(song_hash, curr_node_hash, prev_node_hash):
         return (song_hash <= curr_node_hash or song_hash > prev_node_hash)
     return True
 
-def forward_replicas_to_next_node(key, value, node: Node):
+def forward_replicas_to_next_node(key, value, node):
 
     data = {
         'id': node.my_id,
