@@ -48,8 +48,8 @@ def insert():
 
         node.storage[key] = value
         print(
-            "A key-value pair with key:", key,
-            "and hash:", hash_key, "was inserted/updated."
+            "A key-value pair with key: '" + key +
+            "' and hash:", hash_key, "was inserted/updated."
         )
         print("Our database now looks like this:", node.storage)
 
@@ -145,7 +145,7 @@ def replicas_on_insert():
     if r.status_code != 200:
         print("Something went wrong with updating replicas of next node.")
 
-    return r.text
+    return r.text, r.status_code
 
 
 @app.route('/delete', methods=['POST'])
@@ -153,6 +153,11 @@ def delete():
     """
     This is a route for ALL NODES. The client sends sequests to this route
     so that a key-value pair is deleted.
+
+    In the case of "eventual consistency", the client gets a response to the
+    request after the primary replica of the key-value pair is deleted. The
+    other replicas are deleted by a thread, without blocking the response
+    to the client.
     """
 
     # Extract the key of the 'delete' request.
@@ -214,49 +219,63 @@ def delete():
 
 @app.route('/delete/replicas', methods=['POST'])
 def replicas_on_delete():
+    """
 
+    This is a route for ALL NODES.
+
+    A (previous) neighbor node sends POST requests to this route,
+    so that a key-value pair replica is deleted in the current NODE.
+    """
+
+    # The hash ID of the node-owner of the primary replica
     start_id = request.form['id']
     key = request.form['key']
     k = int(request.form['k'])
 
     if (key in node.storage):
-        # delete item
+        # Delete the key-value replica from our database
         del node.storage[key]
-    if (k == 0 or node.next_id == start_id):
-        return "Replicas have been deleted!"
+
+    if (k == 1 or node.next_id == start_id):
+        return "Replicas have been deleted!", 200
+
     data_to_next = {
-        'id' : start_id, 
+        'id': start_id,
         'key': key,
-        'k' : k-1
+        'k': k-1
     }
 
     url_next = "http://" + node.next_ip + ":" + \
         str(node.next_port) + "/delete/replicas"
 
-    print("Informing the next neighbor to update it's replicas.")
+    print("Informing the next neighbor to delete their replica.")
+
     r = requests.post(url_next, data_to_next)
     if r.status_code != 200:
-        print("Something went wrong with deleting replicas of the next node.")
-    return r.text
+        print("Something went wrong with deleting the replica \
+            in the next node.")
+
+    return r.text, r.status_code
 
 
 @app.route('/query', methods=['POST'])
 def query():
     """
-    This is a route for ALL NODES. The client sends a get request to this route,
-    so that the value of a key-value pair is retrieved.
+    This is a route for ALL NODES. The client sends a get request
+    to this route, so that the value of a key-value pair is retrieved.
     """
     key = request.form['key']
     hash_key = hashing(key)
-    
-    if (key=='*'):
-        # The user wants to GET all key-value pairs from the database, so we send a
-        # request to the BOOTSTRAP server. The BOOTSTRAP server "knows" each node in
-        # the ring network.
-        url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + "/bootstrap/queryall"
+
+    if (key == '*'):
+        # The user wants to GET all key-value pairs from the database,
+        # so we send a request to the BOOTSTRAP server. The BOOTSTRAP
+        # server "knows" each node in the ring network.
+        url_next = "http://" + bootstrap_ip + ":" + str(bootstrap_port) + \
+            "/bootstrap/queryall"
         r = requests.get(url_next)
         return r.text[:-1], 200
-    
+
     if between(hash_key, node.my_id, node.prev_id):
         # If we are the node that owns the hash key.
         if key not in node.storage:
@@ -267,7 +286,8 @@ def query():
 
     if type_replicas == "linearizability":
         if key not in node.storage:
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) \
+                + "/query"
             data = {
                 'key' : key
             }
@@ -277,11 +297,12 @@ def query():
             status = r.status_code
         else:
             data_to_next = {
-            'id' : node.my_id, 
-            'key': key
-            }                
-            
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
+                'id': node.my_id,
+                'key': key
+            }
+
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) \
+                + "/query/replicas"
             print("Submitting the query to the next node.")
             r = requests.post(url_next, data_to_next)
             if r.status_code == 418:
@@ -291,11 +312,12 @@ def query():
                 response = r.text
                 status = r.status_code
 
-    elif type_replicas=="eventual consistency": 
+    elif type_replicas == "eventual consistency":
         if key not in node.storage:
-            url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query"
+            url_next = "http://" + node.next_ip + ":" + str(node.next_port) \
+                + "/query"
             data = {
-                'key' : key
+                'key': key
             }
 
             r = requests.post(url_next, data)
@@ -304,28 +326,28 @@ def query():
         else:
             response = node.storage[key]
             status = 200
-    
+
     return response, status
-    
+
 
 @app.route('/bootstrap/queryall', methods=['GET'])
 def query_all():
     """
-    This is a route for the BOOTSTRAP NODE only. 
+    This is a route for the BOOTSTRAP NODE only.
     Whenever a client requests for ALL the key-value pairs in the database,
     through the "/query/*" route, then the REGULAR node sends a request to this
     route of the bootstrap server.
     """
-    
+
     response = ""
     status = 200
 
     # Gather all datasets of the nodes in the ring.
     for node in ring.ring:
-        ip = node[ 'ip']
+        ip = node['ip']
         port = node['port']
         url_node = "http://" + ip + ":" + str(port) + "/node/sendalldata"
-        r = requests.get(url_node)     
+        r = requests.get(url_node)
         if r.status_code != 200:
             response = "A problem occurred when trying to all fetch all data."
             status = 404
@@ -336,28 +358,29 @@ def query_all():
 
 @app.route('/query/replicas', methods=['POST'])
 def replicas_on_query():
-    
+
     start_id = request.form['id']
     key = request.form['key']
 
     if key not in node.storage:
         return "No data", 418
-    elif start_id==node.my_id:
+    elif start_id == node.my_id:
         return "It's rewind time", 418
 
-
     data_to_next = {
-        'id' : start_id, 
+        'id': start_id,
         'key': key
     }
 
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/query/replicas"
+    url_next = "http://" + node.next_ip + ":" + str(node.next_port) +\
+        "/query/replicas"
     print("Submitting the query to the next node.")
     r = requests.post(url_next, data_to_next)
     if r.status_code == 418:
         return node.storage[key], 200
     elif r.status_code != 200:
-        print("Something went wrong while forwarding the query to the next node.")
+        print("Something went wrong while forwarding the query \
+            to the next node.")
     return r.text
 
 

@@ -4,9 +4,11 @@ bootstrap_ip = '127.0.0.1'
 bootstrap_port = '8000'
 base_url = 'http://' + bootstrap_ip + ':' + bootstrap_port
 
+
 @click.group()
 def toychord():
     pass
+
 
 @toychord.command()
 @click.option('--key', required=True, type=str)
@@ -21,7 +23,7 @@ def insert(key, value, host, port):
     }
 
     r = requests.post(url, data)
-    
+
     """
     url = 'http://' + host + ':' + str(port)  + '/insert/replicas'
     data = {
@@ -33,9 +35,9 @@ def insert(key, value, host, port):
     """
 
     if(r.status_code == 200):
-        click.echo(f'The key value pair was successfully inserted!')
+        click.echo('The key value pair was successfully inserted!')
     else:
-        click.echo(f'Something went wrong with inserting the key-value pair.')
+        click.echo('Something went wrong with inserting the key-value pair.')
 
 
 @toychord.command()
@@ -46,7 +48,7 @@ def delete(key, host, port):
     url = 'http://' + host + ':' + str(port) + '/delete'
 
     data = {
-        'key' : key
+        'key': key
     }
 
     r = requests.post(url, data)
@@ -67,7 +69,7 @@ def delete(key, host, port):
 @click.option('--host', default=bootstrap_ip, type=str)
 @click.option('--port', default=bootstrap_port, type=int)
 def query(key, host, port):
-    url = 'http://' + host + ':' + str(port) + '/query' 
+    url = 'http://' + host + ':' + str(port) + '/query'
     data = {
         'key' : key
     }
@@ -81,12 +83,12 @@ def query(key, host, port):
 @click.option('--host', required=True, type=str)
 @click.option('--port', required=True, type=int)
 def depart(host, port):
-    
+
     url = 'http://' + host + ':' + str(port) + '/node/depart'
-   
+
     data = {
-        'host' : host,
-        'port' : port
+        'host': host,
+        'port': port
     }
 
     r = requests.post(url, {})
@@ -97,7 +99,7 @@ def depart(host, port):
 @toychord.command()
 def overlay():
     url = base_url + '/overlay'
-   
+
     r = requests.get(url)
 
     click.echo(r.text)
