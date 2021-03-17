@@ -181,8 +181,8 @@ def delete():
                 if (type_replicas == "eventual consistency"):
 
                     thread = Thread(
-                        delete_replicas_in_next_nodes,
-                        (key, node)
+                        target=delete_replicas_in_next_nodes,
+                        args=(key, node)
                     )
 
                     thread.start()
