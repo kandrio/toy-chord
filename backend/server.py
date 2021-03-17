@@ -4,12 +4,12 @@ from flask import Flask, request
 from threading import Thread
 from node import Node
 from ring import Ring
-from config import bootstrap_ip, bootstrap_port
+from config import bootstrap_ip, bootstrap_port, K_replicas, type_replicas
 from utils import (
     insert_node_to_ring, get_data_from_next_node,
     get_node_hash_id, between, hashing, hexToInt,
-    K_replicas, type_replicas, call_update_data,
-    forward_replicas_to_next_node
+    call_update_data, forward_replicas_to_next_node,
+    delete_replicas_in_next_nodes
 )
 import requests
 import argparse
@@ -27,6 +27,11 @@ def insert():
 
     The client sends POST requests to this route so that new key-value pairs
     are inserted.
+
+    In the case of "eventual consistency", the client gets a response to the
+    request after the primary replica of the key-value pair is inserted. The
+    other replicas are inserted by a thread, without blocking the response
+    to the client.
     """
 
     # Extract the key and value from the data of the 'insert' request.
@@ -101,13 +106,18 @@ def insert():
 
 @app.route('/insert/replicas', methods=['POST'])
 def replicas_on_insert():
+    """
+    This is a route for ALL NODES.
+
+    A neighbor node sends POST requests to this route, so that a key-value
+    pair replica is inserted in the current NODE.
+    """
+
+    # The hash ID of the node with the primary replica
     start_id = request.form['id']
     key = request.form['key']
     value = request.form['value']
     k = int(request.form['k'])
-
-    if (k == 0):
-        return "All replicas have been inserted!", 200
 
     node.storage[key] = value
     print(
@@ -117,7 +127,7 @@ def replicas_on_insert():
 
     print("Our database now looks like this:\n", node.storage)
 
-    if (node.next_id == start_id):
+    if (node.next_id == start_id or k == 1):
         return "All replicas have been inserted!", 200
 
     data_to_next = {
@@ -134,7 +144,9 @@ def replicas_on_insert():
     r = requests.post(url_next, data_to_next)
     if r.status_code != 200:
         print("Something went wrong with updating replicas of next node.")
+
     return r.text
+
 
 @app.route('/delete', methods=['POST'])
 def delete():
@@ -146,73 +158,87 @@ def delete():
     # Extract the key of the 'delete' request.
     key = request.form['key']
     hash_key = hashing(key)
-    
+
     if between(hash_key, node.my_id, node.prev_id):
         # We are the node that owns that hash key.
         if (key in node.storage):
             # Delete the key-value pair from our database.
             del node.storage[key]
-            
+
             print("The key:", key, "was deleted from our database.")
             print("The database now looks like this:", node.storage)
-                    
-            if (node.next_id != node.my_id):
-                data = {
-                    'id' : node.my_id, 
-                    'key': key,
-                    'k' : K_replicas-1
-                }
-
-                url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
-                r = requests.post(url_next, data)
-                if r.status_code != 200:
-                    print("Something went wrong with retransmiting a key-value pair.")
-                    return "Something went wrong with retransmiting the key-value pair.", 500
 
             response = "The key-value pair was successfully deleted."
             status = 200
+
+            if (node.next_id != node.my_id):
+
+                if (type_replicas == "eventual consistency"):
+
+                    thread = Thread(
+                        delete_replicas_in_next_nodes,
+                        (key, node)
+                    )
+
+                    thread.start()
+
+                elif type_replicas == "linearizability":
+
+                    response, status = delete_replicas_in_next_nodes(
+                        key, node
+                    )
         else:
             response = "There isn't such a key-value pair."
             status = 404
     else:
-        # Otherwise, we send a request to the next node.    
-        url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete"
+        # We are NOT the node that owns that hash key.
+        # So we retransmit the request until we find the
+        # node-owner of the key.
+
+        url_next = "http://" + node.next_ip + ":" + \
+            str(node.next_port) + "/delete"
+
         data = {
             'key': key,
         }
+
         r = requests.post(url_next, data)
         if r.status_code != 200:
             print("Something went wrong with the request to the next node.")
-        
+
         response = r.text
-        status = r.status_code    
+        status = r.status_code
 
     return response, status
 
+
 @app.route('/delete/replicas', methods=['POST'])
 def replicas_on_delete():
-    
+
     start_id = request.form['id']
     key = request.form['key']
     k = int(request.form['k'])
-    
-    if ( key in node.storage):
-            # delete item
+
+    if (key in node.storage):
+        # delete item
         del node.storage[key]
-    if (k==0 or node.next_id==start_id):
+    if (k == 0 or node.next_id == start_id):
         return "Replicas have been deleted!"
     data_to_next = {
         'id' : start_id, 
         'key': key,
         'k' : k-1
     }
-    
-    url_next = "http://" + node.next_ip + ":" + str(node.next_port) + "/delete/replicas"
+
+    url_next = "http://" + node.next_ip + ":" + \
+        str(node.next_port) + "/delete/replicas"
+
     print("Informing the next neighbor to update it's replicas.")
     r = requests.post(url_next, data_to_next)
     if r.status_code != 200:
         print("Something went wrong with deleting replicas of the next node.")
     return r.text
+
 
 @app.route('/query', methods=['POST'])
 def query():

@@ -1,11 +1,6 @@
 import requests
-from config import bootstrap_port, bootstrap_ip
+from config import bootstrap_ip, bootstrap_port, K_replicas
 from hashlib import sha1
-
-K_replicas = 3
-type1="linearizability"
-type2="eventual consistency"
-type_replicas=type2
 
 def insert_node_to_ring(hash_id: str, node_ip: str, node_port: int):
     """ 
@@ -83,4 +78,26 @@ def forward_replicas_to_next_node(key, value, node):
         message = "The key-value pair was successfully inserted."
 
     return message, r.status_code
-    
+
+def delete_replicas_in_next_nodes(key, node):
+
+    data = {
+        'id': node.my_id,
+        'key': key,
+        'k': K_replicas-1
+    }
+
+    url_next = "http://" + node.next_ip + ":" + \
+        str(node.next_port) + "/delete/replicas"
+
+    r = requests.post(url_next, data)
+
+    if r.status_code != 200:
+        response = "Something went wrong with retransmitting the 'delete replicas'\
+            request to the next nodes."
+    else:
+        response = "The key-value pair was successfully deleted."
+
+    print(response)
+
+    return response, r.status_code
