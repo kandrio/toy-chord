@@ -538,14 +538,15 @@ def send_your_data():
 def depart_node():
     """
     This is a route for ALL NODES.
-    Whenever a client asks for a node to depart, it sends a post request
-    to this route.
+    Whenever a user asks for a node to depart, the CLI client sends
+    a post request to this route.
     """
 
-    # The node is about to depart gracefully.
     print("We are about to depart gracefully...")
 
     # We inform our neighbors to update their links.
+    # This data will be sent to the PREVIOUS node, so that it can update
+    # its link to its NEXT node, now that a new node is inserted.
     data_prev = {
         'prev_or_next': 'prev',
         'ip': node.next_ip,
@@ -566,7 +567,7 @@ def depart_node():
         print("The update of the previous node was successful.")
 
     # This data will be sent to the NEXT node, so that it can update
-    # its link to its PREVIOUS node now that a new node is inserted.
+    # its link to its PREVIOUS node, now that a new node is inserted.
     data_next = {
         'prev_or_next': 'next',
         'ip': node.prev_ip,
@@ -591,21 +592,22 @@ def depart_node():
 
     print("About to move our entire database to the next node.")
 
-    if type_replicas == "linearizability":
-        url_next = "http://" + node.next_ip + ":" + \
-            str(node.next_port) + "/node/update/data/depart"
-        data = node.storage
-        data['start_id'] = node.next_id
-        r = requests.post(url_next, data)
+    url_next = "http://" + node.next_ip + ":" + \
+        str(node.next_port) + "/node/update/data/depart"
+    data = node.storage
+    data['start_id'] = node.next_id
+    r = requests.post(url_next, data)
 
-        if r.status_code != 200:
-            print("Something went wrong with moving data to the next node.")
-            return "Something went wrong", r.status_code
-        else:
-            print("Updating the database of the next node was successful.")
+    if r.status_code != 200:
+        print("Something went wrong with moving data to the next node.")
+        return "Something went wrong", r.status_code
+    else:
+        print("Updating the database of the next node was successful.")
 
     print("About to be removed from the ring")
 
+    # We inform the BOOTSTRAP Node that we're leaving, so that it will
+    # update it's Ring structure.
     url_bootstrap = "http://" + bootstrap_ip + ":" + \
         str(bootstrap_port) + "/bootstrap/update/ring"
 
@@ -730,23 +732,27 @@ def delete_your_data():
 @app.route('/bootstrap/update/ring', methods=['POST'])
 def update_ring():
     """
-    This is a route for the BOOTSTRAP node only. 
-    Whenever a NODE wants to depart from the ring, the bootstrap node removes it from
-    the Ring() structure.
+    This is a route for the BOOTSTRAP node only.
+    Whenever a NODE wants to depart from the ring, the bootstrap node removes
+    it from the Ring() structure.
     """
 
     ip = request.form['ip']
     port = request.form['port']
 
     print("About to remove node:", ip + ":" + str(port), "from the ring.")
-    
+
     hash_id = get_node_hash_id(ip, port)
 
     for node in ring.ring:
-        if (node['hash_id'] == hash_id and node['ip'] == ip and node['port'] == port):
+        if (
+            node['hash_id'] == hash_id and
+            node['ip'] == ip and
+            node['port'] == port
+        ):
             ring.ring.remove(node)
             break
-    
+
     print("The node was successfully removed.")
     print("The ring now looks like this:", ring.ring)
 
