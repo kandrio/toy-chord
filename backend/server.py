@@ -51,7 +51,6 @@ def insert():
             "A key-value pair with key: '" + key +
             "' and hash:", hash_key, "was inserted/updated."
         )
-        print("Our database now looks like this:", node.storage)
 
         # If we aren't the only Node in the Ring, we forward the key-value pair
         # to the next node while decreasing the replication factor by 1.
@@ -125,8 +124,6 @@ def replicas_on_insert():
         "was successfully inserted."
     )
 
-    print("Our database now looks like this:\n", node.storage)
-
     if (node.next_id == start_id or k == 1):
         return "All replicas have been inserted!", 200
 
@@ -171,7 +168,6 @@ def delete():
             del node.storage[key]
 
             print("The key:", key, "was deleted from our database.")
-            print("The database now looks like this:", node.storage)
 
             response = "The key-value pair was successfully deleted."
             status = 200
@@ -858,7 +854,6 @@ if __name__ == '__main__':
             for key in response:
                 node.storage[key]=response[key]    
         
-        print("The data was successfully transfered, here is our database:")
-        print(node.storage)
+        print("The data was successfully transfered.")
 
     app.run(host=host, port=port)
