@@ -383,16 +383,19 @@ def replicas_on_query():
 @app.route('/node/sendalldata', methods=['GET'])
 def send_all_data():
     """
-    This is a route for the ALL NODES. Whenever a client requests for ALL the key-value 
-    pairs in the database, through the "/query/*" route, then the BOOTSTRAP node sends 
-    a request to this route of of every REGULAR node, in order to collect their databases.
+    This is a route for the ALL NODES. Whenever a client requests for
+    ALL the key-value pairs in the database, through the "/query/*" route,
+    then the BOOTSTRAP node sends a request to this route of of every
+    REGULAR node, in order to collect their databases.
     """
-    data = "NodeID: "+str(hexToInt(node.my_id))+"\n"
+
+    data = "Node ID: " + str(node.my_id) + "\n"
     for key in node.storage:
-        data += '<'+key+', '+node.storage[key]+'>'
-        data += "\n"
-    
-    return data, 200
+        data += " " + "key: " + key + \
+            ", " + "value: " + node.storage[key] +\
+            ", " + "hash ID: " + hashing(key) + "\n"
+
+    return data
 
 
 @app.route('/bootstrap/node/join', methods=['POST'])
@@ -458,9 +461,9 @@ def join_node():
     print("The RING now looks like this:")
 
     print("\n")
-    for node in ring.ring:
+    for i, node in enumerate(ring.ring):
         print(
-            "Hash ID:", node["hash_id"],
+            i, "Hash ID:", node["hash_id"],
             "IP:", node["ip"],
             "Port:", node["port"]
         )
@@ -532,8 +535,12 @@ def send_your_data():
 
     for key in node.storage:
         hash_key = hashing(key)
-        if(hash_key <= node.prev_id):
-            data[key] = node.storage[key]
+        if (node.my_id > node.prev_id):
+            if (hash_key <= node.prev_id):
+                data[key] = node.storage[key]
+        else:
+            if (hash_key <= node.prev_id and hash_key > node.my_id):
+                data[key] = node.storage[key]
 
     print("The data that are now owned by the previous node are: ", data)
 
@@ -770,9 +777,9 @@ def update_ring():
     print("The RING now looks like this:")
 
     print("\n")
-    for node in ring.ring:
+    for i, node in enumerate(ring.ring):
         print(
-            "Hash ID:", node["hash_id"],
+            i, "Hash ID:", node["hash_id"],
             "IP:", node["ip"],
             "Port:", node["port"]
         )
