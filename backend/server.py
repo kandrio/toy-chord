@@ -54,7 +54,7 @@ def insert():
 
         # If we aren't the only Node in the Ring, we forward the key-value pair
         # to the next node while decreasing the replication factor by 1.
-        if (node.next_id != node.my_id):
+        if (node.next_id != node.my_id and K_replicas > 1):
             if type_replicas == "eventual consistency":
                 # In this case, we start a thread that handles the
                 # forwarding of the key-value pair to the next nodes
@@ -172,7 +172,7 @@ def delete():
             response = "The key-value pair was successfully deleted."
             status = 200
 
-            if (node.next_id != node.my_id):
+            if (node.next_id != node.my_id and K_replicas > 1):
 
                 if (type_replicas == "eventual consistency"):
 
