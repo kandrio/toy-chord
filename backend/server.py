@@ -456,7 +456,15 @@ def join_node():
 
     print("Node:", ip + ":" + str(port), "was inserted in the RING network.")
     print("The RING now looks like this:")
-    print(ring.ring)
+
+    print("\n")
+    for node in ring.ring:
+        print(
+            "Hash ID:", node["hash_id"],
+            "IP:", node["ip"],
+            "Port:", node["port"]
+        )
+    print("\n")
 
     response = {
         'prev_ip': prev_ip,
@@ -648,7 +656,12 @@ def update_node_data_depart():
     for key in to_be_deleted:
         del prev_storage[key]
 
-    print("Our database now looks like this:", node.storage)
+    print("Our database now looks like this:")
+
+    print("\n")
+    for key in node.storage:
+        print(key, ":", node.storage[key])
+    print("\n")
 
     if not prev_storage or node.next_id == start_id:
         return "The database was successfully updated.", 200
@@ -754,7 +767,16 @@ def update_ring():
             break
 
     print("The node was successfully removed.")
-    print("The ring now looks like this:", ring.ring)
+    print("The RING now looks like this:")
+
+    print("\n")
+    for node in ring.ring:
+        print(
+            "Hash ID:", node["hash_id"],
+            "IP:", node["ip"],
+            "Port:", node["port"]
+        )
+    print("\n")
 
     return "The node has departed successfully", 200
 
