@@ -1,4 +1,4 @@
-# toy-chord
+# Toy-chord
 
 ## Install Dependencies
 
